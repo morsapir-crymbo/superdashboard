@@ -13,16 +13,13 @@ export async function createNestServer() {
     .filter(Boolean);
 
   app.enableCors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (origins.length === 0 || origins.includes(origin)) return cb(null, true);
-      return cb(new Error('Not allowed by CORS'), false);
-    },
+    origin: origins.length ? origins : true, 
     credentials: true,
     methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
     allowedHeaders: ['Content-Type','Authorization'],
+    optionsSuccessStatus: 204,
   });
 
-  await app.init(); 
+  await app.init();
   return app.getHttpAdapter().getInstance();
 }
