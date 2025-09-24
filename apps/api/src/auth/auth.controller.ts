@@ -17,8 +17,6 @@ res.cookie('token', token, {
 httpOnly: true,
 sameSite: 'lax',
 secure: process.env.NODE_ENV === 'production',
-// ללא maxAge => Session cookie; לבקשתך אפשר גם לשים 10 שנים:
-// maxAge: 10 * 365 * 24 * 60 * 60 * 1000,
 });
 return { ok: true };
 }

@@ -16,7 +16,6 @@ throw new UnauthorizedException('Invalid credentials');
 
 
 issueToken(username: string) {
-// בלי exp לבקשתך — שיקול אבטחה: הטוקן לא יפוג.
 return this.jwt.sign({ sub: username, role: 'admin' });
 }
 }

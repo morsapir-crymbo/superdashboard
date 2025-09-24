@@ -8,7 +8,7 @@ import { AuthController } from './auth.controller';
 imports: [
 JwtModule.register({
 secret: process.env.JWT_SECRET,
-signOptions: { /* ללא exp בכוונה */ },
+signOptions: {},
 }),
 ],
 controllers: [AuthController],

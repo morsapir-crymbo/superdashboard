@@ -1,14 +1,14 @@
 {
-    "framework": null,
-    "functions": {
-      "api/index.ts": {
-        "runtime": "@vercel/node@5",
-        "memory": 1024,
-        "maxDuration": 10
-      }
-    },
-    "routes": [
-      { "src": "/(.*)", "dest": "/api/index.ts" }
-    ]
-  }
-  
+  "framework": null,
+  "buildCommand": "true",
+  "functions": {
+    "api/index.ts": {
+      "runtime": "@vercel/node@5.3.24",
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  },
+  "routes": [
+    { "src": "/(.*)", "dest": "/api/index.ts" }
+  ]
+}
