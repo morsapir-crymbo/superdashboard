@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createNestServer } from '../server';
+import { createNestServer } from './server';
 
 let server: any; 
 
