@@ -16,10 +16,10 @@ export async function createNestServer() {
     origin: origins.length ? origins : true, 
     credentials: true,
     methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-    allowedHeaders: ['Content-Type','Authorization'],
+    allowedHeaders: ['Content-Type','Authorization','Accept','X-Requested-With'],
     optionsSuccessStatus: 204,
   });
 
-  await app.init();
+  await app.init();       
   return app.getHttpAdapter().getInstance();
 }
