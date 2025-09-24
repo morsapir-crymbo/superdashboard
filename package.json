@@ -1,0 +1,19 @@
+{
+    "name": "vercel-nest-next-envs",
+    "private": true,
+    "workspaces": [
+        "apps/*",
+        "packages/*"
+    ],
+    "scripts": {
+        "dev:api": "pnpm --dir apps/api dev",
+        "dev:web": "pnpm --dir apps/web dev",
+        "dev": "concurrently -k \"pnpm dev:api\" \"pnpm dev:web\"",
+        "build": "pnpm -C apps/api build && pnpm -C apps/web build",
+        "prisma:generate": "pnpm -C apps/api prisma generate",
+        "db:migrate": "pnpm -C apps/api prisma migrate deploy"
+      },
+    "devDependencies": {
+        "concurrently": "^9.2.1"
+    }
+}
