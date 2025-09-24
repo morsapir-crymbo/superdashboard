@@ -1,10 +1,9 @@
-// apps/api/api/index.ts
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createNestServer } from '../server';
-
 let server: any;
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (!server) server = await createNestServer();
   return server(req, res);
 }
+
+export const config = { api: { bodyParser: false } };

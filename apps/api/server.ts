@@ -1,4 +1,3 @@
-// apps/api/server.ts
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './src/app.module';
 import cookieParser from 'cookie-parser';
@@ -7,7 +6,7 @@ export async function createNestServer() {
   const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
 
-  // דיאגנוסטיקה: פותח CORS לכולם ומטפל ב-OPTIONS ידנית
+  // דיאגנוסטיקה: פותח CORS לכולם + עונה ל-OPTIONS גם אם Nest לא תפס
   app.use((req: any, res: any, next: any) => {
     const origin = req.headers?.origin as string | undefined;
     if (origin) {
@@ -21,8 +20,9 @@ export async function createNestServer() {
     next();
   });
 
+  // השאר גם את enableCors פתוח (זמנית)
   app.enableCors({
-    origin: true, // זמני – אחרי שזה עובד נחזיר לרשימה מתוך CORS_ORIGIN
+    origin: true,
     credentials: true,
     methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
     allowedHeaders: ['Content-Type','Authorization','Accept','X-Requested-With'],
