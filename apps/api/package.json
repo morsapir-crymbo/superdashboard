@@ -5,7 +5,8 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "prisma": "prisma"
+    "prisma": "prisma",
+    "postinstall": "prisma generate"
   },
     "dependencies": {
         "@nestjs/common": "^10.0.0",
