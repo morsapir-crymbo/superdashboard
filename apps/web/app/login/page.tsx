@@ -18,11 +18,21 @@ export default function LoginPage() {
     e.preventDefault();
     setErr('');
     try {
-      await api.post('/auth/login', { username, password });
+      const { data } = await api.post('/auth/login', { username, password });
+      const token = data?.token;
+      if (!token) throw new Error('Missing token');
+    
+      // שמור (אפשר גם ב-memory בלבד אם אתה מעדיף)
+      localStorage.setItem('token', token);
+    
+      // הזרקה גלובלית ל-axios
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    
       router.push('/dashboard');
     } catch (e: any) {
       setErr(e?.response?.data?.message || 'Login failed');
     }
+    
   }
 
   return (

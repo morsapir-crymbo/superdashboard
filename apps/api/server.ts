@@ -6,24 +6,22 @@ export async function createNestServer() {
   const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
 
-  // דיאגנוסטיקה: פותח CORS לכולם + עונה ל-OPTIONS גם אם Nest לא תפס
   app.use((req: any, res: any, next: any) => {
     const origin = req.headers?.origin as string | undefined;
     if (origin) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Origin', origin); // או '*'
       res.setHeader('Vary', 'Origin');
     }
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Credentials', 'false'); // לא צריך עם Bearer
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With');
     if (req.method === 'OPTIONS') return res.status(204).end();
     next();
   });
 
-  // השאר גם את enableCors פתוח (זמנית)
   app.enableCors({
-    origin: true,
-    credentials: true,
+    origin: true,            // או רשימת דומיינים — שניהם יעבדו
+    credentials: false,      // 🔑 אין קרדנציאלס
     methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
     allowedHeaders: ['Content-Type','Authorization','Accept','X-Requested-With'],
     optionsSuccessStatus: 204,

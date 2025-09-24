@@ -5,6 +5,18 @@ import React from "react";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400","500","700"] });
 
+// somewhere that runs on client startup
+if (typeof window !== 'undefined') {
+  const t = localStorage.getItem('token');
+  if (t) {
+    // lazy import to avoid SSR issues אם צריך
+    import('@/lib/api').then(({ default: api }) => {
+      api.defaults.headers.common['Authorization'] = `Bearer ${t}`;
+    });
+  }
+}
+
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" dir="ltr">
