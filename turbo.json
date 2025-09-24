@@ -3,6 +3,14 @@
     "tasks": {
       "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
       "dev": { "cache": false }
-    }
+    },
+    "globalEnv": [
+      "DATABASE_URL",
+      "REDIS_URL",
+      "ADMIN_USERNAME",
+      "ADMIN_PASSWORD",
+      "JWT_SECRET",
+      "CORS_ORIGIN"
+    ]
   }
   
