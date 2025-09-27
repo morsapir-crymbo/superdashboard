@@ -9,6 +9,10 @@
     }
   },
   "routes": [
-    { "src": "/(.*)", "dest": "/api/index.ts" }
+    {
+      "src": "/(.*)",
+      "dest": "/api/index",                    
+      "methods": ["GET","POST","PUT","PATCH","DELETE","OPTIONS"] 
+    }
   ]
 }
