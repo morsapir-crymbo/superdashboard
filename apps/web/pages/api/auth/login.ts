@@ -1,4 +1,3 @@
-// apps/web/pages/api/auth/login.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 const API_BASE =
@@ -10,14 +9,11 @@ export const config = {
   api: { bodyParser: false }, 
 };
 
-function readRawBody(req: NextApiRequest): Promise<Uint8Array> {
+function readRawBody(req: NextApiRequest): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-    req.on('end', () => {
-      const buf = Buffer.concat(chunks);
-      resolve(new Uint8Array(buf)); 
-    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
@@ -40,7 +36,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(204).end();
     }
 
-    const raw = await readRawBody(req);
+    const buf = await readRawBody(req);
 
     const fwd = new Headers();
     for (const [k, v] of Object.entries(req.headers)) {
@@ -55,10 +51,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const upstreamUrl = `${API_BASE}/auth/login`;
     console.log('[WEB->API] forwarding to', upstreamUrl);
 
+    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+
     const upstream = await fetch(upstreamUrl, {
       method: 'POST',
       headers: fwd,
-      body: new Blob([raw]),
+      body: ab,             
       redirect: 'manual',
     });
 
@@ -67,9 +65,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(upstream.status);
     upstream.headers.forEach((val, key) => res.setHeader(key, val));
 
-    const arr = Buffer.from(await upstream.arrayBuffer());
-    console.log('[WEB->API] upstream body (first 200 bytes)', arr.slice(0, 200).toString('utf8'));
-    res.send(arr);
+    const out = Buffer.from(await upstream.arrayBuffer());
+    console.log('[WEB->API] upstream body (first 200B):', out.slice(0, 200).toString('utf8'));
+    res.send(out);
   } catch (err: any) {
     console.error('[WEB->API] Proxy error', err?.message || err);
     return res.status(502).json({ ok: false, error: 'Proxy error', detail: err?.message || String(err) });
