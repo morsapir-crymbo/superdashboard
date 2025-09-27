@@ -50,13 +50,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const headers = sanitizeHeaders(req.headers);
     const body = await readRawBody(req);
 
+    console.log('[proxy]', req.method, url);
 
     const upstream = await fetch(url, {
       method: req.method,
       headers,
+      // שלח Buffer רק אם באמת יש גוף
       body: body && body.length > 0 ? (body as any) : undefined,
       redirect: 'manual',
     });
+
+    console.log('[proxy:upstream]', upstream.status, upstream.statusText);
 
     res.status(upstream.status);
     upstream.headers.forEach((val, key) => res.setHeader(key, val));
@@ -75,6 +79,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.send(buf);
     }
   } catch (err: any) {
+    console.error('[proxy:error]', err);
     res
       .status(502)
       .json({ ok: false, error: 'Proxy error', detail: err?.message || String(err) });
