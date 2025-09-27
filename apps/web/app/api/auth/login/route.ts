@@ -1,55 +1,69 @@
 // apps/web/app/api/auth/login/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-
-export const runtime = 'nodejs'; 
+export const runtime = 'nodejs'; // חשוב: שלא ירוץ ב-edge
 
 const API_BASE =
   process.env.NODE_ENV === 'production'
     ? 'https://superdashboard-app.vercel.app'
     : 'http://localhost:3001';
 
-function sanitizeHeaders(incoming: Headers): Headers {
-  const out = new Headers();
-  incoming.forEach((val, key) => {
-    const k = key.toLowerCase();
-    if (k === 'host' || k === 'connection' || k === 'content-length') return;
-    out.set(key, val);
+// בדיקת חיים (GET) – נוח לאבחון
+export async function GET() {
+  return Response.json({
+    ok: true,
+    route: '/api/auth/login',
+    supports: ['GET', 'POST', 'OPTIONS'],
   });
+}
+
+// פרה-פלייט (OPTIONS) – תמיד 204
+export async function OPTIONS() {
+  return new Response(null, { status: 204 });
+}
+
+function sanitizeHeaders(h: Headers): Headers {
+  const out = new Headers();
+  h.forEach((v, k) => {
+    const key = k.toLowerCase();
+    if (key === 'host' || key === 'connection' || key === 'content-length') return;
+    out.set(k, v);
+  });
+  // אם אין content-type, נשים JSON
   if (!out.has('content-type')) out.set('content-type', 'application/json');
   return out;
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204 });
-}
-
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    console.log('[WEB] /api/auth/login -> forward to API');
+    console.log('[WEB] /api/auth/login POST hit');
 
-    const raw = await req.arrayBuffer();           
-    const fwd = sanitizeHeaders(req.headers);     
     const upstreamUrl = `${API_BASE}/auth/login`;
+    const headers = sanitizeHeaders(req.headers);
+    const raw = await req.text(); // קוראים RAW טקסט (מתאים ל-fetch ב-Node)
 
-    console.log('[WEB] forwarding to:', upstreamUrl);
+    console.log('[WEB] forwarding to', upstreamUrl);
+
     const upstream = await fetch(upstreamUrl, {
       method: 'POST',
-      headers: fwd,
-      body: raw,               
+      headers,
+      body: raw,
       redirect: 'manual',
     });
 
-    console.log('[WEB] upstream status:', upstream.status);
+    console.log('[WEB] upstream status', upstream.status);
 
-    const ab = await upstream.arrayBuffer();
-    const res = new NextResponse(ab, { status: upstream.status });
-    upstream.headers.forEach((val, key) => res.headers.set(key, val));
-    return res;
+    const resHeaders = new Headers(upstream.headers);
+    // לא נוגעים ב-Set-Cookie (אם אי פעם תרצה קוּקי בצד הווב)
+
+    const buf = await upstream.arrayBuffer();
+    return new Response(buf, {
+      status: upstream.status,
+      headers: resHeaders,
+    });
   } catch (err: any) {
-    console.error('[WEB] proxy error:', err?.message || err);
-    return NextResponse.json(
+    console.error('[WEB] /api/auth/login proxy error:', err?.message || err);
+    return Response.json(
       { ok: false, error: 'Proxy error', detail: err?.message || String(err) },
-      { status: 502 }
+      { status: 502 },
     );
   }
 }
