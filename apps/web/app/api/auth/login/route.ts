@@ -1,5 +1,7 @@
 // apps/web/app/api/auth/login/route.ts
-export const runtime = 'nodejs'; 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const API_BASE =
   process.env.NODE_ENV === 'production'
