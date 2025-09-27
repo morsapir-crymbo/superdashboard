@@ -33,6 +33,7 @@ function sanitizeHeaders(incoming: NextApiRequest['headers']): Headers {
   return out;
 }
 
+// ✅ מחזירים Buffer (לא ArrayBuffer)
 async function readRawBody(req: NextApiRequest): Promise<Buffer | undefined> {
   if (req.method === 'GET' || req.method === 'HEAD') return undefined;
   const chunks: Buffer[] = [];
@@ -50,6 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const headers = sanitizeHeaders(req.headers);
     const body = await readRawBody(req);
 
+    // לוגים דיאגנוסטיים
     console.log('[proxy]', req.method, url);
 
     const upstream = await fetch(url, {
