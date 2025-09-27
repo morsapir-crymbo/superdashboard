@@ -2,7 +2,7 @@
     "name": "web",
     "private": true,
     "packageManager": "pnpm@10.17.1",          
-    "engines": { "node": "18.x" },             
+    "engines": { "node": "22.x" },             
     "scripts": {
       "dev": "next dev -p 3000",
       "build": "next build",

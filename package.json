@@ -2,6 +2,7 @@
   "name": "vercel-nest-next-envs",
   "private": true,
   "packageManager": "pnpm@10.17.1",
+  "engines": { "node": "22.x" }, 
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev:api": "pnpm --filter api dev",
