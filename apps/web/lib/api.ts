@@ -1,19 +1,14 @@
 import axios from 'axios';
 
-const api = axios.create({
-  baseURL: '/api/proxy',
-});
+const api = axios.create({ baseURL: '/api' });
 
 if (typeof window !== 'undefined') {
   api.interceptors.request.use((cfg) => {
     const token = getToken();
     if (token) {
       const h: any = cfg.headers ?? {};
-      if (typeof h.set === 'function') {
-        h.set('Authorization', `Bearer ${token}`);
-      } else {
-        h['Authorization'] = `Bearer ${token}`;
-      }
+      if (typeof h.set === 'function') h.set('Authorization', `Bearer ${token}`);
+      else h['Authorization'] = `Bearer ${token}`;
       cfg.headers = h;
     }
     return cfg;
