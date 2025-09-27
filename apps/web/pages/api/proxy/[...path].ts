@@ -33,7 +33,6 @@ function sanitizeHeaders(incoming: NextApiRequest['headers']): Headers {
   return out;
 }
 
-// ✅ מחזירים Buffer (לא ArrayBuffer)
 async function readRawBody(req: NextApiRequest): Promise<Buffer | undefined> {
   if (req.method === 'GET' || req.method === 'HEAD') return undefined;
   const chunks: Buffer[] = [];
@@ -51,18 +50,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const headers = sanitizeHeaders(req.headers);
     const body = await readRawBody(req);
 
-    // לוגים דיאגנוסטיים
-    console.log('[proxy]', req.method, url);
 
     const upstream = await fetch(url, {
       method: req.method,
       headers,
-      // שלח Buffer רק אם באמת יש גוף
       body: body && body.length > 0 ? (body as any) : undefined,
       redirect: 'manual',
     });
-
-    console.log('[proxy:upstream]', upstream.status, upstream.statusText);
 
     res.status(upstream.status);
     upstream.headers.forEach((val, key) => res.setHeader(key, val));
@@ -81,7 +75,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.send(buf);
     }
   } catch (err: any) {
-    console.error('[proxy:error]', err);
     res
       .status(502)
       .json({ ok: false, error: 'Proxy error', detail: err?.message || String(err) });
