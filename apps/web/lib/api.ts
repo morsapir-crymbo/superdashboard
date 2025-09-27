@@ -1,6 +1,14 @@
 import axios from 'axios';
 
-const api = axios.create({ baseURL: '/backend' });
+const isProd = typeof window !== 'undefined'
+  ? window.location.hostname.endsWith('vercel.app')
+  : process.env.NODE_ENV === 'production';
+
+const api = axios.create({
+  baseURL: isProd
+    ? 'https://superdashboard-app.vercel.app' 
+    : 'http://localhost:3001',               
+});
 
 if (typeof window !== 'undefined') {
   api.interceptors.request.use((cfg) => {
