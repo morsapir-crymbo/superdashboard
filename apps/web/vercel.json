@@ -1,6 +1,0 @@
-{
-    "rewrites": [
-      { "source": "/api/(.*)", "destination": "https://superdashboard-app.vercel.app/$1" }
-    ]
-  }
-  
