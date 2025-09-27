@@ -7,20 +7,22 @@ const API_BASE =
     : 'http://localhost:3001';
 
 export const config = {
-  api: { bodyParser: false }, // נעביר את ה־raw לגוף
+  api: { bodyParser: false }, 
 };
 
-function readRawBody(req: NextApiRequest): Promise<Buffer> {
+function readRawBody(req: NextApiRequest): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('end', () => {
+      const buf = Buffer.concat(chunks);
+      resolve(new Uint8Array(buf)); 
+    });
     req.on('error', reject);
   });
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // לוגים — יופיעו ב־“Functions / Logs” בפרויקט web ב-Vercel
   console.log('[WEB->API] /api/auth/login', {
     method: req.method,
     url: req.url,
@@ -35,13 +37,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     if (req.method === 'OPTIONS') {
-      // לא אמור להיות צריך כאן, אבל נשיב בכל זאת
       return res.status(204).end();
     }
 
-    const bodyBuf = await readRawBody(req);
+    const raw = await readRawBody(req);
 
-    // נבנה headers נקיים להעברה הלאה
     const fwd = new Headers();
     for (const [k, v] of Object.entries(req.headers)) {
       if (!v) continue;
@@ -50,7 +50,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (Array.isArray(v)) fwd.set(k, v.join(', '));
       else fwd.set(k, String(v));
     }
-    // נבטיח Content-Type ברירת מחדל
     if (!fwd.has('content-type')) fwd.set('content-type', 'application/json');
 
     const upstreamUrl = `${API_BASE}/auth/login`;
@@ -59,19 +58,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const upstream = await fetch(upstreamUrl, {
       method: 'POST',
       headers: fwd,
-      body: bodyBuf,
+      body: new Blob([raw]),
       redirect: 'manual',
     });
 
     console.log('[WEB->API] upstream status', upstream.status);
 
     res.status(upstream.status);
-    upstream.headers.forEach((val, key) => {
-      res.setHeader(key, val);
-    });
+    upstream.headers.forEach((val, key) => res.setHeader(key, val));
 
     const arr = Buffer.from(await upstream.arrayBuffer());
-    // לוג קצר של הגוף (slice כדי לא לשפוך טוקן ללוגים בטעות)
     console.log('[WEB->API] upstream body (first 200 bytes)', arr.slice(0, 200).toString('utf8'));
     res.send(arr);
   } catch (err: any) {
