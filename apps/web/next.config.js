@@ -10,7 +10,7 @@ const nextConfig = {
   
       return [
         {
-          source: '/api/:path*',
+          source: '/upstream/:path*',
           destination: `${API_BASE}/:path*`,
         },
       ];
