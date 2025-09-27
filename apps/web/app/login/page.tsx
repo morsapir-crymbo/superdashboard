@@ -19,20 +19,25 @@ function LoginInner() {
     e.preventDefault();
     setErr('');
     try {
-      const { data } = await api.post('/auth/login', { username, password });
+      const body = new URLSearchParams({ username, password });
+  
+      const { data } = await api.post('/auth/login', body, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      });
+  
       const token = data?.token;
       if (!token) throw new Error('Missing token');
-
       localStorage.setItem('token', token);
+  
       const isHttps = typeof location !== 'undefined' && location.protocol === 'https:';
-      document.cookie =
-        `sd_token=${encodeURIComponent(token)}; Path=/; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax${isHttps ? '; Secure' : ''}`;
-
+      document.cookie = `sd_token=${encodeURIComponent(token)}; Path=/; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax${isHttps ? '; Secure' : ''}`;
+  
       router.push('/dashboard');
     } catch (e: any) {
       setErr(e?.response?.data?.message || 'Login failed');
     }
   }
+  
 
   return (
     <main className="min-h-screen grid place-items-center bg-gradient-to-b from-slate-50 to-slate-100">

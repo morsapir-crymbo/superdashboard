@@ -1,23 +1,24 @@
 import axios from 'axios';
 
-const isProd = typeof window !== 'undefined'
-  ? window.location.hostname.endsWith('vercel.app')
-  : process.env.NODE_ENV === 'production';
-
 const api = axios.create({
-  baseURL: isProd
-    ? 'https://superdashboard-app.vercel.app' 
-    : 'http://localhost:3001',               
+  baseURL:
+    typeof window !== 'undefined' && window.location.hostname.endsWith('vercel.app')
+      ? 'https://superdashboard-app.vercel.app'
+      : 'http://localhost:3001',
 });
 
 if (typeof window !== 'undefined') {
   api.interceptors.request.use((cfg) => {
-    const token = getToken();
-    if (token) {
-      const h: any = cfg.headers ?? {};
-      if (typeof h.set === 'function') h.set('Authorization', `Bearer ${token}`);
-      else h['Authorization'] = `Bearer ${token}`;
-      cfg.headers = h;
+    const url = (cfg.url || '').toString();
+    const isLogin = /\/auth\/login(?:$|\?)/.test(url);
+    if (!isLogin) {
+      const token = getToken();
+      if (token) {
+        const h: any = cfg.headers ?? {};
+        if (typeof h.set === 'function') h.set('Authorization', `Bearer ${token}`);
+        else h['Authorization'] = `Bearer ${token}`;
+        cfg.headers = h;
+      }
     }
     return cfg;
   });
