@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 type Env = { id: number; name: string; version: string; updatedAt: string };
 
@@ -22,11 +23,20 @@ export default function Dashboard() {
   const [selectedEnv, setSelectedEnv] = useState<Env | null>(null);
   const [newVersion, setNewVersion] = useState('');
 
+  const ROWS_PER_PAGE = 15;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(rows.length / ROWS_PER_PAGE));
+  const pageRows = useMemo(() => {
+    const start = (page - 1) * ROWS_PER_PAGE;
+    return rows.slice(start, start + ROWS_PER_PAGE);
+  }, [rows, page]);
+
   const load = async () => {
     try {
       const { data } = await api.get('/envs');
       setRows(data);
       setErr('');
+      setPage(1);
     } catch {
       setErr('Failed to load environments');
     } finally {
@@ -53,24 +63,27 @@ export default function Dashboard() {
     load();
   }
 
-  return (
-    <main className="min-h-screen bg-gradient-to-b from-white to-slate-100">
-      <div className="container mx-auto max-w-5xl py-10">
-        <Card className="shadow-xl">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-3xl font-extrabold tracking-tight">Environments & Versions</CardTitle>
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    year: '2-digit', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  });
 
-            {/* Add Environment button + dialog */}
-            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-              <DialogTrigger asChild>
-                <Button className="rounded-2xl px-5">Add Environment</Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Add new environment</DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-3 py-4">
-                  <div className="grid gap-2">
+  return (
+    <main className="h-screen overflow-hidden bg-gradient-to-b from-white to-slate-100">
+      <div className="mx-auto h-full max-w-5xl px-3">
+        <Card className="h-full flex flex-col shadow-xl">
+          <CardHeader className="flex-shrink-0 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-xl font-bold tracking-tight">Environments & Versions</CardTitle>
+              <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                <DialogTrigger asChild>
+                  <Button className="rounded-xl h-8 px-3 text-xs">Add</Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Add new environment</DialogTitle>
+                  </DialogHeader>
+                  <div className="grid gap-2 py-1">
                     <label className="text-sm font-medium">Environment name</label>
                     <Input
                       placeholder="e.g. production"
@@ -78,62 +91,64 @@ export default function Dashboard() {
                       onChange={(e) => setNewEnvName(e.target.value)}
                     />
                   </div>
-                </div>
-                <DialogFooter className="gap-2 sm:gap-0">
-                  <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-                  <Button onClick={createEnv} disabled={!newEnvName.trim()}>Create</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  <DialogFooter className="gap-2 sm:gap-0">
+                    <Button variant="outline" onClick={() => setCreateOpen(false)} className="h-8 px-3 text-xs">Cancel</Button>
+                    <Button onClick={createEnv} disabled={!newEnvName.trim()} className="h-8 px-3 text-xs">Create</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
           </CardHeader>
 
-          <CardContent>
-  {loading ? (
-    <p className="text-center py-10">Loading…</p>
-  ) : (
-    <div className="mx-auto max-w-4xl">
-      <Table className="table-fixed">   {/* חשוב: table-fixed */}
-        <colgroup>
-          <col className="w-[40%]" />   {/* Name */}
-          <col className="w-[20%]" />   {/* Version */}
-          <col className="w-[25%]" />   {/* Updated */}
-          <col className="w-[15%]" />   {/* Actions */}
-        </colgroup>
+          <CardContent className="flex-1 overflow-hidden py-0">
+            {loading ? (
+              <p className="text-center py-6 text-sm">Loading…</p>
+            ) : (
+              <div className="h-full flex flex-col">
+                <div className="flex-1">
+                  <Table className="table-fixed text-xs leading-none">
+                    <colgroup>
+                      <col className="w-[38%]" />
+                      <col className="w-[20%]" />
+                      <col className="w-[27%]" />
+                      <col className="w-[15%]" />
+                    </colgroup>
 
-        <TableHeader>
-          <TableRow>
-            <TableHead className="text-left">Name</TableHead>
-            <TableHead className="text-left">Version</TableHead>
-            <TableHead className="text-left">Updated</TableHead>
-            <TableHead className="text-left">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
+                    <TableHeader>
+                      <TableRow className="h-8">
+                        <TableHead className="text-left">Name</TableHead>
+                        <TableHead className="text-left">Version</TableHead>
+                        <TableHead className="text-left">Updated</TableHead>
+                        <TableHead className="text-left">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
 
-        <TableBody>
-          {rows.map((r) => (
-            <TableRow key={r.id}>
-              <TableCell className="text-left font-medium">{r.name}</TableCell>
-              <TableCell className="text-left tabular-nums">{r.version}</TableCell>
-              <TableCell className="text-left">
-                {new Date(r.updatedAt).toLocaleString('en-US')}
-              </TableCell>
-              <TableCell className="text-left">
-                <Dialog
-                  open={updateOpen && selectedEnv?.id === r.id}
-                  onOpenChange={(o) => {
-                    setUpdateOpen(o);
-                    if (o) { setSelectedEnv(r); setNewVersion(''); } else { setSelectedEnv(null); }
-                  }}
-                >
-                  <DialogTrigger asChild>
-                              <Button variant="secondary" className="rounded-xl">Update version</Button>
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-md">
-                              <DialogHeader>
-                                <DialogTitle>Update version — {r.name}</DialogTitle>
-                              </DialogHeader>
-                              <div className="grid gap-3 py-4">
-                                <div className="grid gap-2">
+                    <TableBody>
+                      {pageRows.map((r) => (
+                        <TableRow key={r.id} className="h-12">
+                          <TableCell className="text-left font-medium py-1 truncate">{r.name}</TableCell>
+                          <TableCell className="text-left tabular-nums py-1">{r.version}</TableCell>
+                          <TableCell className="text-left whitespace-nowrap py-1">
+                            {fmt.format(new Date(r.updatedAt))}
+                          </TableCell>
+                          <TableCell className="text-left py-1">
+                            <Dialog
+                              open={updateOpen && selectedEnv?.id === r.id}
+                              onOpenChange={(o) => {
+                                setUpdateOpen(o);
+                                if (o) { setSelectedEnv(r); setNewVersion(''); } else { setSelectedEnv(null); }
+                              }}
+                            >
+                              <DialogTrigger asChild>
+                                <Button variant="secondary" className="rounded-lg h-7 px-2 text-xs">
+                                  Update
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle className="text-sm">Update version — {r.name}</DialogTitle>
+                                </DialogHeader>
+                                <div className="grid gap-2 py-1">
                                   <label className="text-sm font-medium">Version</label>
                                   <Input
                                     placeholder="e.g. 1.2.3"
@@ -141,20 +156,50 @@ export default function Dashboard() {
                                     onChange={(e) => setNewVersion(e.target.value)}
                                   />
                                 </div>
-                              </div>
-                              <DialogFooter className="gap-2 sm:gap-0">
-                                <Button variant="outline" onClick={() => setUpdateOpen(false)}>Cancel</Button>
-                                <Button onClick={updateVersion} disabled={!newVersion.trim()}>Update</Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                                <DialogFooter className="gap-2 sm:gap-0">
+                                  <Button variant="outline" onClick={() => setUpdateOpen(false)} className="h-8 px-3 text-xs">Cancel</Button>
+                                  <Button onClick={updateVersion} disabled={!newVersion.trim()} className="h-8 px-3 text-xs">Update</Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
 
-                {err && <p className="text-red-600 text-center mt-4">{err}</p>}
+                  {err && <p className="text-red-600 text-center mt-2 text-xs">{err}</p>}
+                </div>
+
+                <div className="flex items-center justify-between gap-3 py-2">
+                  <span className="text-[11px] text-slate-600">
+                    Showing {(page - 1) * ROWS_PER_PAGE + 1}
+                    –{Math.min(page * ROWS_PER_PAGE, rows.length)} of {rows.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="h-8 px-2 text-xs"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                      Prev
+                    </Button>
+                    <span className="text-[11px] tabular-nums">
+                      {page} / {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      className="h-8 px-2 text-xs"
+                    >
+                      Next
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
           </CardContent>
