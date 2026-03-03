@@ -3,26 +3,31 @@ import axios from 'axios';
 const NEXT_PUBLIC_API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 function getApiBaseUrl(): string {
-  if (NEXT_PUBLIC_API_BASE) {
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : 'server';
+  
+  console.log('[API Config]', {
+    envVar: NEXT_PUBLIC_API_BASE || '(not set)',
+    hostname,
+  });
+  
+  if (NEXT_PUBLIC_API_BASE && !NEXT_PUBLIC_API_BASE.includes('localhost')) {
     return NEXT_PUBLIC_API_BASE;
   }
   
   if (typeof window === 'undefined') {
-    return 'http://localhost:3001';
+    return NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
   }
-  
-  const hostname = window.location.hostname;
   
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:3001';
   }
   
   if (hostname.includes('superdashboard')) {
-    const apiHost = hostname.replace('-app', '-api').replace('-web', '-api');
-    if (apiHost !== hostname) {
-      return `https://${apiHost}`;
-    }
-    return 'https://superdashboard-api.vercel.app';
+    const apiHost = hostname
+      .replace('-app.', '-api.')
+      .replace('-web.', '-api.');
+    console.log('[API] Transformed hostname:', hostname, '->', apiHost);
+    return `https://${apiHost}`;
   }
   
   if (hostname.endsWith('vercel.app')) {
@@ -33,7 +38,7 @@ function getApiBaseUrl(): string {
 }
 
 const apiBaseUrl = getApiBaseUrl();
-console.log('[API] Base URL:', apiBaseUrl);
+console.log('[API] Using base URL:', apiBaseUrl);
 
 const api = axios.create({
   baseURL: apiBaseUrl,
