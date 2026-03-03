@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, memo, useCallback } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { StatsCard } from './StatsCard';
@@ -12,26 +12,29 @@ interface CustomerStatsRowProps {
   customer: CustomerVolumeStats;
 }
 
-export function CustomerStatsRow({ customer }: CustomerStatsRowProps) {
+function CustomerStatsRowComponent({ customer }: CustomerStatsRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeMetric, setActiveMetric] = useState<MetricType | null>(null);
 
-  const handleCardClick = (metric: MetricType) => {
-    if (activeMetric === metric) {
-      setActiveMetric(null);
-      setIsExpanded(false);
-    } else {
-      setActiveMetric(metric);
+  const handleCardClick = useCallback((metric: MetricType) => {
+    setActiveMetric((prev) => {
+      if (prev === metric) {
+        setIsExpanded(false);
+        return null;
+      }
       setIsExpanded(true);
-    }
-  };
+      return metric;
+    });
+  }, []);
 
-  const handleToggleExpand = () => {
-    setIsExpanded(!isExpanded);
-    if (isExpanded) {
-      setActiveMetric(null);
-    }
-  };
+  const handleToggleExpand = useCallback(() => {
+    setIsExpanded((prev) => {
+      if (prev) {
+        setActiveMetric(null);
+      }
+      return !prev;
+    });
+  }, []);
 
   return (
     <Card className="overflow-hidden">
@@ -40,6 +43,7 @@ export function CustomerStatsRow({ customer }: CustomerStatsRowProps) {
           <button
             onClick={handleToggleExpand}
             className="flex items-center gap-2 hover:text-slate-600 transition-colors"
+            type="button"
           >
             {isExpanded ? (
               <ChevronDown className="h-4 w-4" />
@@ -84,3 +88,5 @@ export function CustomerStatsRow({ customer }: CustomerStatsRowProps) {
     </Card>
   );
 }
+
+export const CustomerStatsRow = memo(CustomerStatsRowComponent);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo, useCallback } from 'react';
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import {
   Table,
@@ -22,37 +22,56 @@ interface EnvironmentTableProps {
 type SortDirection = 'asc' | 'desc' | null;
 type SortField = MetricType | 'environmentId';
 
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
+  return currencyFormatter.format(value);
 }
 
-export function EnvironmentTable({
+function SortIcon({ field, sortField, sortDirection }: { 
+  field: SortField; 
+  sortField: SortField | null;
+  sortDirection: SortDirection;
+}) {
+  if (sortField !== field) {
+    return <ArrowUpDown className="h-3 w-3 ml-1 opacity-50" />;
+  }
+  return sortDirection === 'asc' ? (
+    <ArrowUp className="h-3 w-3 ml-1" />
+  ) : (
+    <ArrowDown className="h-3 w-3 ml-1" />
+  );
+}
+
+function EnvironmentTableComponent({
   environments,
   highlightMetric,
 }: EnvironmentTableProps) {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      if (sortDirection === 'asc') {
-        setSortDirection('desc');
-      } else if (sortDirection === 'desc') {
-        setSortField(null);
-        setSortDirection(null);
-      } else {
-        setSortDirection('asc');
+  const handleSort = useCallback((field: SortField) => {
+    setSortField((prevField) => {
+      if (prevField === field) {
+        setSortDirection((prevDir) => {
+          if (prevDir === 'asc') return 'desc';
+          if (prevDir === 'desc') {
+            setSortField(null);
+            return null;
+          }
+          return 'asc';
+        });
+        return prevField;
       }
-    } else {
-      setSortField(field);
       setSortDirection('asc');
-    }
-  };
+      return field;
+    });
+  }, []);
 
   const sortedEnvironments = useMemo(() => {
     if (!sortField || !sortDirection) return environments;
@@ -81,17 +100,6 @@ export function EnvironmentTable({
     });
   }, [environments, sortField, sortDirection]);
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) {
-      return <ArrowUpDown className="h-3 w-3 ml-1 opacity-50" />;
-    }
-    return sortDirection === 'asc' ? (
-      <ArrowUp className="h-3 w-3 ml-1" />
-    ) : (
-      <ArrowDown className="h-3 w-3 ml-1" />
-    );
-  };
-
   if (environments.length === 0) {
     return (
       <p className="text-sm text-slate-500 text-center py-4">
@@ -112,7 +120,7 @@ export function EnvironmentTable({
               onClick={() => handleSort('environmentId')}
             >
               Environment
-              <SortIcon field="environmentId" />
+              <SortIcon field="environmentId" sortField={sortField} sortDirection={sortDirection} />
             </Button>
           </TableHead>
           {METRICS.map((metric) => (
@@ -127,7 +135,7 @@ export function EnvironmentTable({
                 onClick={() => handleSort(metric.key)}
               >
                 {metric.shortLabel}
-                <SortIcon field={metric.key} />
+                <SortIcon field={metric.key} sortField={sortField} sortDirection={sortDirection} />
               </Button>
             </TableHead>
           ))}
@@ -154,3 +162,5 @@ export function EnvironmentTable({
     </Table>
   );
 }
+
+export const EnvironmentTable = memo(EnvironmentTableComponent);

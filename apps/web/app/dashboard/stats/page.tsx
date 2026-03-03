@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -14,37 +14,67 @@ export default function StatsPage() {
   const [error, setError] = useState('');
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
 
   const fetchStats = useCallback(async (showLoading = false) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
     if (showLoading) setLoading(true);
     setIsRefreshing(true);
-    
+
     try {
-      const { data } = await api.get('/volume/stats');
+      const { data } = await api.get('/volume/stats', { signal });
+
+      if (!isMountedRef.current) return;
+
       setStats(data);
       setError('');
       setLastRefresh(new Date());
     } catch (err: any) {
+      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') {
+        return;
+      }
+
+      if (!isMountedRef.current) return;
+
       setError(err?.response?.data?.message || 'Failed to load volume stats');
     } finally {
-      setLoading(false);
-      setIsRefreshing(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+        setIsRefreshing(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
     fetchStats(true);
+
+    return () => {
+      isMountedRef.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [fetchStats]);
 
-  useAutoRefresh({
+  const { resetInterval } = useAutoRefresh({
     intervalMs: 5 * 60 * 1000,
     enabled: true,
     onRefresh: () => fetchStats(false),
   });
 
-  const handleManualRefresh = () => {
+  const handleManualRefresh = useCallback(() => {
     fetchStats(false);
-  };
+    resetInterval();
+  }, [fetchStats, resetInterval]);
 
   const formatLastRefresh = (date: Date | null) => {
     if (!date) return '';

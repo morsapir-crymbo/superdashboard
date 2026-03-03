@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
@@ -22,7 +23,7 @@ function formatCurrency(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
-export function StatsCard({
+function StatsCardComponent({
   label,
   value,
   description,
@@ -51,3 +52,5 @@ export function StatsCard({
     </Card>
   );
 }
+
+export const StatsCard = memo(StatsCardComponent);
