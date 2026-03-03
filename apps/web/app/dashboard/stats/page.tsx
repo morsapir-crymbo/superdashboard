@@ -44,7 +44,21 @@ export default function StatsPage() {
 
       if (!isMountedRef.current) return;
 
-      setError(err?.response?.data?.message || 'Failed to load volume stats');
+      const errorMessage = err?.response?.data?.message 
+        || err?.message 
+        || 'Failed to load volume stats';
+      const statusCode = err?.response?.status;
+      const fullError = statusCode 
+        ? `[${statusCode}] ${errorMessage}` 
+        : errorMessage;
+      
+      console.error('Stats API error:', {
+        status: statusCode,
+        message: errorMessage,
+        data: err?.response?.data,
+      });
+      
+      setError(fullError);
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -124,16 +138,22 @@ export default function StatsPage() {
             </div>
           </div>
         ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-            <p className="text-red-600 text-sm">{error}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fetchStats(true)}
-              className="mt-3"
-            >
-              Try Again
-            </Button>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="text-center">
+              <p className="text-red-600 font-medium mb-1">Failed to load stats</p>
+              <p className="text-red-500 text-sm font-mono bg-red-100 rounded px-2 py-1 inline-block max-w-full break-words">
+                {error}
+              </p>
+            </div>
+            <div className="flex justify-center mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchStats(true)}
+              >
+                Try Again
+              </Button>
+            </div>
           </div>
         ) : stats.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-8 text-center">

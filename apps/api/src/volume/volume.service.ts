@@ -34,16 +34,25 @@ export class VolumeService {
 
   async getAllCustomersStats(): Promise<CustomerVolumeDetail[]> {
     const customerIds = this.depositRepository.getAllCustomerIds();
+    this.logger.log(`Fetching stats for ${customerIds.length} customers: ${customerIds.join(', ')}`);
+    
+    if (customerIds.length === 0) {
+      this.logger.warn('No customers configured - check environment variables for DB connections');
+      return [];
+    }
+
     const results: CustomerVolumeDetail[] = [];
 
     for (let i = 0; i < customerIds.length; i += this.CONCURRENCY_LIMIT) {
       const batch = customerIds.slice(i, i + this.CONCURRENCY_LIMIT);
+      this.logger.debug(`Processing batch: ${batch.join(', ')}`);
       const batchResults = await Promise.all(
         batch.map((id) => this.getCustomerStatsSafe(id)),
       );
       results.push(...batchResults);
     }
 
+    this.logger.log(`Completed fetching stats for ${results.length} customers`);
     return results;
   }
 

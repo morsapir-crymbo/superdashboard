@@ -1,11 +1,11 @@
 {
   "framework": null,
-  "buildCommand": "true",
+  "buildCommand": "npx prisma generate && npx prisma migrate deploy && npm run build",
   "functions": {
     "api/index.ts": {
       "runtime": "@vercel/node@5.3.24",
       "memory": 1024,
-      "maxDuration": 10
+      "maxDuration": 30
     }
   },
   "routes": [
