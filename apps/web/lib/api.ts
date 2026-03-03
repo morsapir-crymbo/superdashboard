@@ -1,12 +1,14 @@
 import axios from 'axios';
 
+const NEXT_PUBLIC_API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+
 function getApiBaseUrl(): string {
-  if (typeof window === 'undefined') {
-    return process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
+  if (NEXT_PUBLIC_API_BASE) {
+    return NEXT_PUBLIC_API_BASE;
   }
   
-  if (process.env.NEXT_PUBLIC_API_BASE) {
-    return process.env.NEXT_PUBLIC_API_BASE;
+  if (typeof window === 'undefined') {
+    return 'http://localhost:3001';
   }
   
   const hostname = window.location.hostname;
@@ -15,15 +17,26 @@ function getApiBaseUrl(): string {
     return 'http://localhost:3001';
   }
   
+  if (hostname.includes('superdashboard')) {
+    const apiHost = hostname.replace('-app', '-api').replace('-web', '-api');
+    if (apiHost !== hostname) {
+      return `https://${apiHost}`;
+    }
+    return 'https://superdashboard-api.vercel.app';
+  }
+  
   if (hostname.endsWith('vercel.app')) {
     return 'https://superdashboard-api.vercel.app';
   }
   
-  return `${window.location.protocol}//${hostname.replace('web', 'api')}`;
+  return `${window.location.protocol}//${hostname}:3001`;
 }
 
+const apiBaseUrl = getApiBaseUrl();
+console.log('[API] Base URL:', apiBaseUrl);
+
 const api = axios.create({
-  baseURL: getApiBaseUrl(),
+  baseURL: apiBaseUrl,
 });
 
 if (typeof window !== 'undefined') {
