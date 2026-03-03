@@ -1,15 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { VolumeRepository } from './volume.repository';
-import { DbConnectionsService } from '../shared/db-connections.service';
+import { DepositRepository } from '../deposit/deposit.repository';
 import { QuotesService } from '../shared/quotes.service';
-
-export interface EnvironmentVolumeStats {
-  customerId: string;
-  customerName: string;
-  last30Days: number;
-  today: number;
-  monthToDate: number;
-}
+import { DepositVolumeResult } from '../deposit/types/deposit.dto';
 
 export interface CustomerVolumeDetail {
   customerId: string;
@@ -27,61 +20,64 @@ export interface CustomerVolumeDetail {
   }[];
 }
 
-interface DepositRow {
-  total_amount: number;
-  currency: string;
-  currency_id?: number;
-}
-
 @Injectable()
 export class VolumeService {
   private readonly logger = new Logger(VolumeService.name);
+  private readonly backfillLocks: Map<string, Promise<void>> = new Map();
+  private readonly CONCURRENCY_LIMIT = 3;
 
   constructor(
     private repository: VolumeRepository,
-    private dbConnections: DbConnectionsService,
+    private depositRepository: DepositRepository,
     private quotesService: QuotesService,
   ) {}
 
   async getAllCustomersStats(): Promise<CustomerVolumeDetail[]> {
-    const customers = this.dbConnections.getCustomerConfigs();
+    const customerIds = this.depositRepository.getAllCustomerIds();
     const results: CustomerVolumeDetail[] = [];
 
-    for (const customer of customers) {
-      try {
-        const stats = await this.getCustomerStats(customer.id);
-        results.push(stats);
-      } catch (error) {
-        this.logger.error(`Failed to get stats for ${customer.id}`, error);
-        results.push({
-          customerId: customer.id,
-          customerName: customer.displayName,
-          summary: { last30Days: 0, today: 0, monthToDate: 0 },
-          environments: [],
-        });
-      }
+    for (let i = 0; i < customerIds.length; i += this.CONCURRENCY_LIMIT) {
+      const batch = customerIds.slice(i, i + this.CONCURRENCY_LIMIT);
+      const batchResults = await Promise.all(
+        batch.map((id) => this.getCustomerStatsSafe(id)),
+      );
+      results.push(...batchResults);
     }
 
     return results;
   }
 
-  async getCustomerStats(customerId: string): Promise<CustomerVolumeDetail> {
-    const config = this.dbConnections
-      .getCustomerConfigs()
-      .find((c) => c.id === customerId);
+  private async getCustomerStatsSafe(customerId: string): Promise<CustomerVolumeDetail> {
+    try {
+      return await this.getCustomerStats(customerId);
+    } catch (error) {
+      this.logger.error(`Failed to get stats for ${customerId}`, error);
+      const config = this.depositRepository.getCustomerConfig(customerId);
+      return {
+        customerId,
+        customerName: config?.displayName || customerId,
+        summary: { last30Days: 0, today: 0, monthToDate: 0 },
+        environments: [],
+      };
+    }
+  }
 
+  async getCustomerStats(customerId: string): Promise<CustomerVolumeDetail> {
+    const config = this.depositRepository.getCustomerConfig(customerId);
     if (!config) {
       throw new Error(`Unknown customer: ${customerId}`);
     }
 
-    const now = new Date();
-    const today = this.getDateOnly(now);
-    const thirtyDaysAgo = this.getDateOnly(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000));
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const now = this.getNowUTC();
+    const today = this.getDateOnlyUTC(now);
+    const thirtyDaysAgo = this.getDateOnlyUTC(
+      new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+    );
+    const monthStart = this.getMonthStartUTC(now);
 
     const [last30Days, todayVolume, mtd] = await Promise.all([
       this.getVolumeForRange(customerId, thirtyDaysAgo, today),
-      this.getRealTimeVolume(customerId, today, today),
+      this.getRealTimeVolumeUsd(customerId, today, today),
       this.getMonthToDateVolume(customerId, monthStart, today),
     ]);
 
@@ -109,38 +105,28 @@ export class VolumeService {
     startDate: Date,
     endDate: Date,
   ): Promise<number> {
-    const yesterday = this.getDateOnly(new Date(Date.now() - 24 * 60 * 60 * 1000));
-    
+    const yesterday = this.getYesterdayUTC();
     const cachedEndDate = endDate > yesterday ? yesterday : endDate;
-    
-    if (startDate <= cachedEndDate) {
-      const missingDates = await this.repository.getMissingDates(
-        customerId,
-        startDate,
-        cachedEndDate,
-      );
 
-      if (missingDates.length > 0) {
-        await this.backfillMissingDates(customerId, missingDates);
-      }
-    }
-
-    let total = 0;
+    let cachedTotal = 0;
 
     if (startDate <= cachedEndDate) {
-      total += await this.repository.sumVolumeForDateRange(
+      await this.ensureDataBackfilled(customerId, startDate, cachedEndDate);
+      cachedTotal = await this.repository.sumVolumeForDateRange(
         customerId,
         startDate,
         cachedEndDate,
       );
     }
 
-    const today = this.getDateOnly(new Date());
+    const today = this.getDateOnlyUTC(this.getNowUTC());
+    let todayTotal = 0;
+
     if (endDate >= today) {
-      total += await this.getRealTimeVolume(customerId, today, today);
+      todayTotal = await this.getRealTimeVolumeUsd(customerId, today, today);
     }
 
-    return total;
+    return Math.round((cachedTotal + todayTotal) * 100) / 100;
   }
 
   private async getMonthToDateVolume(
@@ -148,20 +134,11 @@ export class VolumeService {
     monthStart: Date,
     today: Date,
   ): Promise<number> {
-    const yesterday = this.getDateOnly(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const yesterday = this.getYesterdayUTC();
 
     let cachedVolume = 0;
     if (monthStart <= yesterday) {
-      const missingDates = await this.repository.getMissingDates(
-        customerId,
-        monthStart,
-        yesterday,
-      );
-
-      if (missingDates.length > 0) {
-        await this.backfillMissingDates(customerId, missingDates);
-      }
-
+      await this.ensureDataBackfilled(customerId, monthStart, yesterday);
       cachedVolume = await this.repository.sumVolumeForDateRange(
         customerId,
         monthStart,
@@ -169,73 +146,146 @@ export class VolumeService {
       );
     }
 
-    const todayVolume = await this.getRealTimeVolume(customerId, today, today);
+    const todayVolume = await this.getRealTimeVolumeUsd(customerId, today, today);
 
-    return cachedVolume + todayVolume;
+    return Math.round((cachedVolume + todayVolume) * 100) / 100;
   }
 
-  private async backfillMissingDates(customerId: string, dates: Date[]): Promise<void> {
-    this.logger.log(`Backfilling ${dates.length} dates for ${customerId}`);
+  private async ensureDataBackfilled(
+    customerId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<void> {
+    const lockKey = `${customerId}:${this.formatDate(startDate)}:${this.formatDate(endDate)}`;
+    
+    const existingLock = this.backfillLocks.get(lockKey);
+    if (existingLock) {
+      await existingLock;
+      return;
+    }
 
-    for (const date of dates) {
-      try {
-        const volume = await this.getRealTimeVolume(customerId, date, date);
-        await this.repository.upsertDailyVolume(customerId, customerId, date, volume);
-      } catch (error) {
-        this.logger.error(`Failed to backfill ${customerId} for ${date}`, error);
-      }
+    const backfillPromise = this.performBackfill(customerId, startDate, endDate);
+    this.backfillLocks.set(lockKey, backfillPromise);
+
+    try {
+      await backfillPromise;
+    } finally {
+      this.backfillLocks.delete(lockKey);
     }
   }
 
-  async getRealTimeVolume(
+  private async performBackfill(
+    customerId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<void> {
+    const missingDates = await this.repository.getMissingDates(
+      customerId,
+      startDate,
+      endDate,
+    );
+
+    if (missingDates.length === 0) {
+      return;
+    }
+
+    this.logger.log(`Backfilling ${missingDates.length} dates for ${customerId}`);
+
+    try {
+      const volumesByDate = await this.depositRepository.batchGetDailyVolumes(
+        customerId,
+        missingDates,
+      );
+
+      const quotes = await this.quotesService.getQuotes();
+
+      for (const date of missingDates) {
+        const dateKey = this.formatDate(date);
+        const volumes = volumesByDate.get(dateKey) || [];
+        const totalUsd = this.calculateTotalUsd(volumes, quotes);
+
+        await this.repository.upsertDailyVolume(customerId, customerId, date, totalUsd);
+      }
+
+      this.logger.log(`Backfill completed for ${customerId}`);
+    } catch (error) {
+      this.logger.error(`Backfill failed for ${customerId}`, error);
+    }
+  }
+
+  async getRealTimeVolumeUsd(
     customerId: string,
     startDate: Date,
     endDate: Date,
   ): Promise<number> {
-    const startStr = this.formatDate(startDate);
-    const endStr = this.formatDate(endDate) + ' 23:59:59';
-
-    const query = this.dbConnections.getVolumeQuery(customerId, startStr, endStr);
-    const quotes = await this.quotesService.getQuotes();
-
     try {
-      const rows = await this.dbConnections.queryCustomerDb<DepositRow>(customerId, query);
+      const volumes = await this.depositRepository.getVolumeByDateRange(customerId, {
+        start: startDate,
+        end: endDate,
+      });
 
-      let totalUsd = 0;
-      for (const row of rows) {
-        const amount = Number(row.total_amount) || 0;
-        totalUsd += this.quotesService.convertToUsd(amount, row.currency, quotes);
-      }
-
-      return Math.round(totalUsd * 100) / 100;
+      const quotes = await this.quotesService.getQuotes();
+      return this.calculateTotalUsd(volumes, quotes);
     } catch (error) {
-      this.logger.error(`Failed to query ${customerId}`, error);
+      this.logger.error(`Failed to get real-time volume for ${customerId}`, error);
       return 0;
     }
   }
 
-  async captureSnapshotForDate(date: Date): Promise<void> {
-    const customers = this.dbConnections.getCustomerConfigs();
-    const dateOnly = this.getDateOnly(date);
+  private calculateTotalUsd(
+    volumes: DepositVolumeResult[],
+    quotes: Record<string, number>,
+  ): number {
+    let total = 0;
 
-    for (const customer of customers) {
-      try {
-        const volume = await this.getRealTimeVolume(customer.id, dateOnly, dateOnly);
-        await this.repository.upsertDailyVolume(
-          customer.id,
-          customer.id,
-          dateOnly,
-          volume,
-        );
-        this.logger.log(`Captured snapshot for ${customer.id}: $${volume}`);
-      } catch (error) {
-        this.logger.error(`Failed to capture snapshot for ${customer.id}`, error);
-      }
+    for (const vol of volumes) {
+      total += this.quotesService.convertToUsd(vol.amount, vol.currency, quotes);
     }
+
+    return Math.round(total * 100) / 100;
   }
 
-  private getDateOnly(date: Date): Date {
-    return new Date(date.toISOString().split('T')[0]);
+  async captureSnapshotForDate(date: Date): Promise<{ success: string[]; failed: string[] }> {
+    const customerIds = this.depositRepository.getAllCustomerIds();
+    const dateOnly = this.getDateOnlyUTC(date);
+    const success: string[] = [];
+    const failed: string[] = [];
+
+    for (const customerId of customerIds) {
+      try {
+        const volume = await this.getRealTimeVolumeUsd(customerId, dateOnly, dateOnly);
+        await this.repository.upsertDailyVolume(customerId, customerId, dateOnly, volume);
+        this.logger.log(`Snapshot captured for ${customerId}: $${volume}`);
+        success.push(customerId);
+      } catch (error) {
+        this.logger.error(`Snapshot failed for ${customerId}`, error);
+        failed.push(customerId);
+      }
+    }
+
+    return { success, failed };
+  }
+
+  private getNowUTC(): Date {
+    return new Date();
+  }
+
+  private getDateOnlyUTC(date: Date): Date {
+    const utcDate = new Date(Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+    ));
+    return utcDate;
+  }
+
+  private getYesterdayUTC(): Date {
+    const now = this.getNowUTC();
+    return this.getDateOnlyUTC(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  }
+
+  private getMonthStartUTC(date: Date): Date {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
   }
 
   private formatDate(date: Date): string {
