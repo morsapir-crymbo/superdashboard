@@ -9,6 +9,11 @@ import {
 } from '@nestjs/common';
 import { VolumeService } from './volume.service';
 import { JwtGuard } from '../auth/jwt.guard';
+import {
+  getAllDefinedCustomerIds,
+  getMissingCustomerConfigs,
+  getCustomerConfigs,
+} from '../deposit/types/customer-config';
 
 @Controller('volume')
 @UseGuards(JwtGuard)
@@ -20,6 +25,17 @@ export class VolumeController {
   @Get('stats')
   async getAllStats() {
     this.logger.log('GET /volume/stats - Fetching all customer stats');
+    
+    const allDefined = getAllDefinedCustomerIds();
+    const configured = getCustomerConfigs().map((c) => c.id);
+    const missing = getMissingCustomerConfigs();
+    
+    this.logger.log(`[Config] All defined: ${allDefined.join(', ')}`);
+    this.logger.log(`[Config] Configured (with DB creds): ${configured.join(', ') || '(none)'}`);
+    if (missing.length > 0) {
+      this.logger.warn(`[Config] Missing DB credentials for: ${missing.join(', ')}`);
+    }
+    
     try {
       const stats = await this.volumeService.getAllCustomersStats();
       this.logger.log(`GET /volume/stats - Returned ${stats.length} customers`);
@@ -97,5 +113,21 @@ export class VolumeController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  @Get('config/status')
+  async getConfigStatus() {
+    const allDefined = getAllDefinedCustomerIds();
+    const configured = getCustomerConfigs().map((c) => c.id);
+    const missing = getMissingCustomerConfigs();
+    
+    return {
+      allDefinedCustomers: allDefined,
+      configuredCustomers: configured,
+      missingCredentials: missing,
+      message: configured.length === 0
+        ? 'No customer databases configured. Add environment variables: <CUSTOMER>_DB_HOST, <CUSTOMER>_DB_DATABASE, <CUSTOMER>_DB_USER, <CUSTOMER>_DB_PASSWORD'
+        : `${configured.length} of ${allDefined.length} customers configured`,
+    };
   }
 }

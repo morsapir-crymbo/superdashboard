@@ -17,3 +17,10 @@ coverage/
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+apps/**/.env
+apps/**/.env.local
