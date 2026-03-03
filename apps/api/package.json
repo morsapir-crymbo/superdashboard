@@ -6,17 +6,21 @@
         "build": "nest build",
         "start": "node dist/main.js",
         "prisma": "prisma",
-        "postinstall": "prisma generate"
+        "postinstall": "prisma generate",
+        "migrate": "prisma migrate dev",
+        "migrate:deploy": "prisma migrate deploy"
     },
     "dependencies": {
         "@nestjs/common": "^10.0.0",
         "@nestjs/core": "^10.0.0",
         "@nestjs/jwt": "^10.2.0",
         "@nestjs/platform-express": "^10.0.0",
+        "@nestjs/schedule": "^4.0.0",
         "@prisma/client": "^5.18.0",
         "cookie-parser": "^1.4.6",
         "dotenv": "^16.4.0",
         "ioredis": "^5.8.0",
+        "mysql2": "^3.9.0",
         "prisma": "^5.18.0"
     },
     "devDependencies": {
