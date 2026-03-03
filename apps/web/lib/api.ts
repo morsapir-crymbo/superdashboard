@@ -1,10 +1,29 @@
 import axios from 'axios';
 
+function getApiBaseUrl(): string {
+  if (typeof window === 'undefined') {
+    return process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
+  }
+  
+  if (process.env.NEXT_PUBLIC_API_BASE) {
+    return process.env.NEXT_PUBLIC_API_BASE;
+  }
+  
+  const hostname = window.location.hostname;
+  
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:3001';
+  }
+  
+  if (hostname.endsWith('vercel.app')) {
+    return 'https://superdashboard-api.vercel.app';
+  }
+  
+  return `${window.location.protocol}//${hostname.replace('web', 'api')}`;
+}
+
 const api = axios.create({
-  baseURL:
-    typeof window !== 'undefined' && window.location.hostname.endsWith('vercel.app')
-      ? 'https://superdashboard-app.vercel.app'
-      : 'http://localhost:3001',
+  baseURL: getApiBaseUrl(),
 });
 
 if (typeof window !== 'undefined') {
