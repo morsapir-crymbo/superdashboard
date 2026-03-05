@@ -227,10 +227,13 @@ export default function StatsPage() {
           )}
         </main>
 
-        <footer className="mt-8 text-center">
+        <footer className="mt-8 text-center space-y-1">
           <p className="text-xs text-slate-400">
-            Auto-recalculates every 15 minutes
+            Data updates automatically every 15 minutes
             {lastRefresh && ` • Next update at ${formatNextRefresh()}`}
+          </p>
+          <p className="text-xs text-slate-400">
+            Click Refresh to get the latest data immediately
           </p>
         </footer>
       </div>

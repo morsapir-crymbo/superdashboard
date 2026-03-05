@@ -218,23 +218,37 @@ export class VolumeService {
     );
     const monthStart = this.getMonthStartUTC(now);
 
-    const [last30Days, todayVolume, mtd] = await Promise.all([
+    const [last30Days, realTimeTodayVolume, mtd] = await Promise.all([
       this.getVolumeForRange(customerId, thirtyDaysAgo, today),
       this.getRealTimeVolumeUsd(customerId, today, today),
       this.getMonthToDateVolume(customerId, monthStart, today),
     ]);
 
-    // Upsert today's volume to the snapshot table on each refresh
-    // Only save if we got actual data (todayVolume > 0) to avoid overwriting good data with 0s
-    if (todayVolume > 0) {
+    // If real-time fetch returned 0, try to get today's value from snapshot table
+    let todayVolume = realTimeTodayVolume;
+    if (todayVolume === 0) {
       try {
-        await this.repository.upsertDailyVolume(customerId, customerId, today, todayVolume);
-        this.logger.debug(`[Stats] Upserted today's volume for ${customerId}: $${todayVolume}`);
+        const snapshotValue = await this.repository.getVolumeForDate(customerId, today);
+        if (snapshotValue > 0) {
+          todayVolume = snapshotValue;
+          this.logger.log(`[Stats] ${customerId}: Real-time returned 0, using snapshot value: $${snapshotValue}`);
+        }
+      } catch (error) {
+        this.logger.debug(`[Stats] ${customerId}: Could not get snapshot value for today`);
+      }
+    }
+
+    // Upsert today's volume to the snapshot table on each refresh
+    // Only save if we got actual data from real-time (not from snapshot fallback)
+    if (realTimeTodayVolume > 0) {
+      try {
+        await this.repository.upsertDailyVolume(customerId, customerId, today, realTimeTodayVolume);
+        this.logger.debug(`[Stats] Upserted today's volume for ${customerId}: $${realTimeTodayVolume}`);
       } catch (error) {
         this.logger.warn(`[Stats] Failed to upsert today's volume for ${customerId}`, error);
       }
     } else {
-      this.logger.debug(`[Stats] Skipping upsert for ${customerId} - no data returned (likely connection issue)`);
+      this.logger.debug(`[Stats] Skipping upsert for ${customerId} - no real-time data returned`);
     }
 
     return {

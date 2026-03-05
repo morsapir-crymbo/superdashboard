@@ -128,4 +128,17 @@ export class VolumeRepository {
 
     return result._sum.volume?.toNumber() || 0;
   }
+
+  async getVolumeForDate(customerId: string, date: Date): Promise<number> {
+    const dateOnly = new Date(date.toISOString().split('T')[0]);
+    
+    const record = await this.prisma.dailyEnvironmentVolume.findFirst({
+      where: {
+        customerId,
+        date: dateOnly,
+      },
+    });
+
+    return record?.volume?.toNumber() || 0;
+  }
 }
