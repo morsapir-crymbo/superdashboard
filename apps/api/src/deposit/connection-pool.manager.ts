@@ -8,6 +8,8 @@ interface PoolEntry {
   healthCheckFailed: boolean;
 }
 
+const CONNECTION_TIMEOUT_MS = 5000; // 5 second hard timeout
+
 @Injectable()
 export class ConnectionPoolManager implements OnModuleDestroy {
   private readonly logger = new Logger(ConnectionPoolManager.name);
@@ -18,9 +20,27 @@ export class ConnectionPoolManager implements OnModuleDestroy {
     waitForConnections: true,
     enableKeepAlive: true,
     keepAliveInitialDelay: 30000,
-    connectTimeout: 10000, // 10 second connection timeout
-    acquireTimeout: 10000, // 10 second acquire timeout
+    connectTimeout: 5000,
+    acquireTimeout: 5000,
   };
+
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+    let timeoutId: NodeJS.Timeout;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`${operation} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    try {
+      const result = await Promise.race([promise, timeoutPromise]);
+      clearTimeout(timeoutId!);
+      return result;
+    } catch (error) {
+      clearTimeout(timeoutId!);
+      throw error;
+    }
+  }
 
   async getConnection(customerId: string, dbConfig: CustomerDbConfig): Promise<mysql.PoolConnection> {
     let poolEntry = this.pools.get(customerId);
@@ -32,13 +52,15 @@ export class ConnectionPoolManager implements OnModuleDestroy {
     poolEntry.lastUsed = Date.now();
 
     try {
-      return await poolEntry.pool.getConnection();
+      return await this.withTimeout(
+        poolEntry.pool.getConnection(),
+        CONNECTION_TIMEOUT_MS,
+        `getConnection for ${customerId}`,
+      );
     } catch (error) {
       this.logger.error(`Failed to get connection for ${customerId}`, error);
       poolEntry.healthCheckFailed = true;
-      
-      poolEntry = await this.createPool(customerId, dbConfig);
-      return await poolEntry.pool.getConnection();
+      throw error;
     }
   }
 
@@ -51,7 +73,11 @@ export class ConnectionPoolManager implements OnModuleDestroy {
     const connection = await this.getConnection(customerId, dbConfig);
 
     try {
-      const [rows] = await connection.execute(sql, params);
+      const [rows] = await this.withTimeout(
+        connection.execute(sql, params),
+        CONNECTION_TIMEOUT_MS * 2,
+        `executeQuery for ${customerId}`,
+      );
       return rows as T[];
     } finally {
       connection.release();

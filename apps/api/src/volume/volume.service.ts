@@ -62,6 +62,7 @@ export class VolumeService {
 
   private async getStatsWithRealTimeData(customerIds: string[]): Promise<CustomerVolumeDetail[]> {
     const results: CustomerVolumeDetail[] = [];
+    let connectionFailures = 0;
 
     for (let i = 0; i < customerIds.length; i += this.CONCURRENCY_LIMIT) {
       const batch = customerIds.slice(i, i + this.CONCURRENCY_LIMIT);
@@ -69,10 +70,25 @@ export class VolumeService {
       const batchResults = await Promise.all(
         batch.map((id) => this.getCustomerStatsSafe(id)),
       );
+      
+      // Count how many returned zero data (likely connection failures)
+      for (const result of batchResults) {
+        if (result.summary.last30Days === 0 && result.summary.today === 0 && result.summary.monthToDate === 0) {
+          connectionFailures++;
+        }
+      }
+      
       results.push(...batchResults);
+      
+      // If first batch all failed, likely network issue - fall back to cached data
+      if (i === 0 && connectionFailures === batch.length) {
+        this.logger.warn(`All ${batch.length} customers in first batch returned zero data - likely connection issue`);
+        this.logger.log('Falling back to cached snapshot data');
+        return this.getStatsFromSnapshotOnly();
+      }
     }
 
-    this.logger.log(`Completed fetching stats for ${results.length} customers`);
+    this.logger.log(`Completed fetching stats for ${results.length} customers (${connectionFailures} potential failures)`);
     return results;
   }
 
