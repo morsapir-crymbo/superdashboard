@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Activity } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { CustomerStatsRow } from '@/components/dashboard/CustomerStatsRow';
+import { TotalVolumeSummary } from '@/components/dashboard/TotalVolumeSummary';
 import { useAutoRefresh } from '@/lib/hooks/useAutoRefresh';
 import { CustomerVolumeStats } from '@/lib/types/stats';
 
@@ -14,7 +14,7 @@ export default function StatsPage() {
   const [error, setError] = useState('');
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(true);
 
@@ -44,20 +44,17 @@ export default function StatsPage() {
 
       if (!isMountedRef.current) return;
 
-      const errorMessage = err?.response?.data?.message 
-        || err?.message 
-        || 'Failed to load volume stats';
+      const errorMessage =
+        err?.response?.data?.message || err?.message || 'Failed to load volume stats';
       const statusCode = err?.response?.status;
-      const fullError = statusCode 
-        ? `[${statusCode}] ${errorMessage}` 
-        : errorMessage;
-      
+      const fullError = statusCode ? `[${statusCode}] ${errorMessage}` : errorMessage;
+
       console.error('Stats API error:', {
         status: statusCode,
         message: errorMessage,
         data: err?.response?.data,
       });
-      
+
       setError(fullError);
     } finally {
       if (isMountedRef.current) {
@@ -100,81 +97,99 @@ export default function StatsPage() {
   };
 
   return (
-    <div className="h-screen overflow-auto p-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Volume Analytics</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Volume per customer and environment
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {lastRefresh && (
-              <span className="text-xs text-slate-400">
-                Last updated: {formatLastRefresh(lastRefresh)}
-              </span>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleManualRefresh}
-              disabled={isRefreshing}
-              className="h-8"
-            >
-              <RefreshCw
-                className={`h-3.5 w-3.5 mr-1.5 ${isRefreshing ? 'animate-spin' : ''}`}
-              />
-              Refresh
-            </Button>
-          </div>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="max-w-5xl mx-auto p-6">
+        <header className="mb-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-slate-900 rounded-xl shadow-lg">
+                <Activity className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900">
+                  Volume Analytics
+                </h1>
+                <p className="text-sm text-slate-500">
+                  Real-time transaction volume monitoring
+                </p>
+              </div>
+            </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="text-center">
-              <RefreshCw className="h-8 w-8 animate-spin text-slate-400 mx-auto mb-3" />
-              <p className="text-sm text-slate-500">Loading volume data...</p>
-            </div>
-          </div>
-        ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <div className="text-center">
-              <p className="text-red-600 font-medium mb-1">Failed to load stats</p>
-              <p className="text-red-500 text-sm font-mono bg-red-100 rounded px-2 py-1 inline-block max-w-full break-words">
-                {error}
-              </p>
-            </div>
-            <div className="flex justify-center mt-4">
+            <div className="flex items-center gap-4">
+              {lastRefresh && (
+                <div className="text-right">
+                  <p className="text-xs text-slate-400">Last updated</p>
+                  <p className="text-sm font-medium text-slate-600">
+                    {formatLastRefresh(lastRefresh)}
+                  </p>
+                </div>
+              )}
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => fetchStats(true)}
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+                className="h-9 px-4"
               >
-                Try Again
+                <RefreshCw
+                  className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`}
+                />
+                Refresh
               </Button>
             </div>
           </div>
-        ) : stats.length === 0 ? (
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-8 text-center">
-            <p className="text-slate-500">No customer data available</p>
-            <p className="text-xs text-slate-400 mt-1">
-              Configure environment connections to see volume stats
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {stats.map((customer) => (
-              <CustomerStatsRow key={customer.customerId} customer={customer} />
-            ))}
-          </div>
-        )}
+        </header>
 
-        <div className="mt-6 text-center">
+        <main>
+          {loading ? (
+            <div className="flex items-center justify-center py-32">
+              <div className="text-center">
+                <div className="relative">
+                  <div className="w-16 h-16 border-4 border-slate-200 rounded-full" />
+                  <div className="absolute top-0 left-0 w-16 h-16 border-4 border-slate-900 rounded-full border-t-transparent animate-spin" />
+                </div>
+                <p className="text-sm text-slate-500 mt-4">Loading volume data...</p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-8">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <span className="text-2xl">⚠️</span>
+                </div>
+                <p className="text-red-600 font-semibold mb-2">
+                  Failed to load stats
+                </p>
+                <p className="text-red-500 text-sm font-mono bg-red-100 rounded-lg px-4 py-2 inline-block max-w-full break-words">
+                  {error}
+                </p>
+              </div>
+              <div className="flex justify-center mt-6">
+                <Button variant="outline" size="sm" onClick={() => fetchStats(true)}>
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          ) : stats.length === 0 ? (
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-12 text-center">
+              <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Activity className="h-8 w-8 text-slate-400" />
+              </div>
+              <p className="text-slate-600 font-medium">No customer data available</p>
+              <p className="text-sm text-slate-400 mt-2">
+                Configure environment connections to see volume stats
+              </p>
+            </div>
+          ) : (
+            <TotalVolumeSummary stats={stats} />
+          )}
+        </main>
+
+        <footer className="mt-8 text-center">
           <p className="text-xs text-slate-400">
-            Auto-refreshes every 5 minutes
+            Auto-refreshes every 5 minutes • Data updates in real-time
           </p>
-        </div>
+        </footer>
       </div>
     </div>
   );
