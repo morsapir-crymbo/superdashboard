@@ -51,7 +51,7 @@ const ALL_CUSTOMER_CONFIGS: CustomerVolumeConfig[] = [
       database: process.env.JAVASHK_DB_DATABASE || '',
     },
     decimalStrategy: 'power',
-    filters: [],
+    filters: [{ column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' }],
   },
   {
     id: 'montrex',
@@ -94,7 +94,7 @@ const ALL_CUSTOMER_CONFIGS: CustomerVolumeConfig[] = [
       database: process.env.BNP_DB_DATABASE || '',
     },
     decimalStrategy: 'power',
-    filters: [],
+    filters: [{ column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' }],
   },
 ];
 
