@@ -225,11 +225,16 @@ export class VolumeService {
     ]);
 
     // Upsert today's volume to the snapshot table on each refresh
-    try {
-      await this.repository.upsertDailyVolume(customerId, customerId, today, todayVolume);
-      this.logger.debug(`[Stats] Upserted today's volume for ${customerId}: $${todayVolume}`);
-    } catch (error) {
-      this.logger.warn(`[Stats] Failed to upsert today's volume for ${customerId}`, error);
+    // Only save if we got actual data (todayVolume > 0) to avoid overwriting good data with 0s
+    if (todayVolume > 0) {
+      try {
+        await this.repository.upsertDailyVolume(customerId, customerId, today, todayVolume);
+        this.logger.debug(`[Stats] Upserted today's volume for ${customerId}: $${todayVolume}`);
+      } catch (error) {
+        this.logger.warn(`[Stats] Failed to upsert today's volume for ${customerId}`, error);
+      }
+    } else {
+      this.logger.debug(`[Stats] Skipping upsert for ${customerId} - no data returned (likely connection issue)`);
     }
 
     return {
