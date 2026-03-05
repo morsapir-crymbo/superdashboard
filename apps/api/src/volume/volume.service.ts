@@ -127,16 +127,21 @@ export class VolumeService {
         new Date(b.date).getTime() - new Date(a.date).getTime()
       );
       
-      let last30Days = 0;
+      let last30DaysVolume = 0;
+      let last30DaysCount = 0;
       let todayVolume = 0;
-      let monthToDate = 0;
+      let todayCount = 0;
+      let mtdVolume = 0;
+      let mtdCount = 0;
       let lastKnownDailyVolume = 0;
+      let lastKnownDailyCount = 0;
 
       // Find the most recent non-zero daily volume (for fallback)
       for (const record of sortedRecords) {
         const volume = Number(record.volume);
         if (volume > 0) {
           lastKnownDailyVolume = volume;
+          lastKnownDailyCount = record.depositCount || 0;
           break;
         }
       }
@@ -146,18 +151,22 @@ export class VolumeService {
         const todayStr = today.toISOString().split('T')[0];
         const monthStartStr = monthStart.toISOString().split('T')[0];
         const volume = Number(record.volume);
+        const count = record.depositCount || 0;
 
-        last30Days += volume;
+        last30DaysVolume += volume;
+        last30DaysCount += count;
 
         if (recordDate === todayStr) {
           todayVolume = volume > 0 ? volume : lastKnownDailyVolume;
+          todayCount = volume > 0 ? count : lastKnownDailyCount;
           if (volume === 0 && lastKnownDailyVolume > 0) {
             this.logger.log(`[Snapshot] ${customerId}: Today value is 0, using last known value: $${lastKnownDailyVolume}`);
           }
         }
 
         if (recordDate >= monthStartStr) {
-          monthToDate += volume;
+          mtdVolume += volume;
+          mtdCount += count;
         }
       }
 
@@ -166,24 +175,24 @@ export class VolumeService {
       );
       if (!hasTodayRecord && lastKnownDailyVolume > 0) {
         todayVolume = lastKnownDailyVolume;
+        todayCount = lastKnownDailyCount;
         this.logger.log(`[Snapshot] ${customerId}: No today record, using last known value: $${lastKnownDailyVolume}`);
       }
 
-      // Note: Snapshot data doesn't include deposit counts, so we show 0 for those
       const last30DaysMetrics: MetricSet = {
-        volume: Math.round(last30Days * 100) / 100,
-        depositCount: 0,
-        avgPerDeposit: 0,
+        volume: Math.round(last30DaysVolume * 100) / 100,
+        depositCount: last30DaysCount,
+        avgPerDeposit: calculateAvgPerDeposit(last30DaysVolume, last30DaysCount),
       };
       const todayMetrics: MetricSet = {
         volume: Math.round(todayVolume * 100) / 100,
-        depositCount: 0,
-        avgPerDeposit: 0,
+        depositCount: todayCount,
+        avgPerDeposit: calculateAvgPerDeposit(todayVolume, todayCount),
       };
       const mtdMetrics: MetricSet = {
-        volume: Math.round(monthToDate * 100) / 100,
-        depositCount: 0,
-        avgPerDeposit: 0,
+        volume: Math.round(mtdVolume * 100) / 100,
+        depositCount: mtdCount,
+        avgPerDeposit: calculateAvgPerDeposit(mtdVolume, mtdCount),
       };
 
       results.push({
@@ -255,28 +264,34 @@ export class VolumeService {
     let todayMetrics = realTimeTodayMetrics;
     if (todayMetrics.volume === 0) {
       try {
-        const snapshotValue = await this.repository.getVolumeForDate(customerId, today);
-        if (snapshotValue > 0) {
+        const snapshotMetrics = await this.repository.getMetricsForDate(customerId, today);
+        if (snapshotMetrics.volume > 0) {
           todayMetrics = {
-            volume: snapshotValue,
-            depositCount: 0, // We don't store deposit count in snapshot
-            avgPerDeposit: 0,
+            volume: snapshotMetrics.volume,
+            depositCount: snapshotMetrics.depositCount,
+            avgPerDeposit: calculateAvgPerDeposit(snapshotMetrics.volume, snapshotMetrics.depositCount),
           };
-          this.logger.log(`[Stats] ${customerId}: Real-time returned 0, using snapshot value: $${snapshotValue}`);
+          this.logger.log(`[Stats] ${customerId}: Real-time returned 0, using snapshot: $${snapshotMetrics.volume}, ${snapshotMetrics.depositCount} deposits`);
         }
       } catch (error) {
         this.logger.debug(`[Stats] ${customerId}: Could not get snapshot value for today`);
       }
     }
 
-    // Upsert today's volume to the snapshot table on each refresh
+    // Upsert today's volume and deposit count to the snapshot table on each refresh
     // Only save if we got actual data from real-time (not from snapshot fallback)
-    if (realTimeTodayMetrics.volume > 0) {
+    if (realTimeTodayMetrics.volume > 0 || realTimeTodayMetrics.depositCount > 0) {
       try {
-        await this.repository.upsertDailyVolume(customerId, customerId, today, realTimeTodayMetrics.volume);
-        this.logger.debug(`[Stats] Upserted today's volume for ${customerId}: $${realTimeTodayMetrics.volume}`);
+        await this.repository.upsertDailyVolume(
+          customerId,
+          customerId,
+          today,
+          realTimeTodayMetrics.volume,
+          realTimeTodayMetrics.depositCount,
+        );
+        this.logger.debug(`[Stats] Upserted today's data for ${customerId}: $${realTimeTodayMetrics.volume}, ${realTimeTodayMetrics.depositCount} deposits`);
       } catch (error) {
-        this.logger.warn(`[Stats] Failed to upsert today's volume for ${customerId}`, error);
+        this.logger.warn(`[Stats] Failed to upsert today's data for ${customerId}`, error);
       }
     } else {
       this.logger.debug(`[Stats] Skipping upsert for ${customerId} - no real-time data returned`);
@@ -310,14 +325,17 @@ export class VolumeService {
     const cachedEndDate = endDate > yesterday ? yesterday : endDate;
 
     let cachedVolume = 0;
+    let cachedCount = 0;
 
     if (startDate <= cachedEndDate) {
       await this.ensureDataBackfilled(customerId, startDate, cachedEndDate);
-      cachedVolume = await this.repository.sumVolumeForDateRange(
+      const cachedMetrics = await this.repository.sumMetricsForDateRange(
         customerId,
         startDate,
         cachedEndDate,
       );
+      cachedVolume = cachedMetrics.volume;
+      cachedCount = cachedMetrics.depositCount;
     }
 
     const today = this.getDateOnlyUTC(this.getNowUTC());
@@ -328,7 +346,7 @@ export class VolumeService {
     }
 
     const totalVolume = Math.round((cachedVolume + todayMetrics.volume) * 100) / 100;
-    const totalCount = todayMetrics.depositCount; // Only today's count for now (historical not stored)
+    const totalCount = cachedCount + todayMetrics.depositCount;
     
     return {
       volume: totalVolume,
@@ -345,19 +363,22 @@ export class VolumeService {
     const yesterday = this.getYesterdayUTC();
 
     let cachedVolume = 0;
+    let cachedCount = 0;
     if (monthStart <= yesterday) {
       await this.ensureDataBackfilled(customerId, monthStart, yesterday);
-      cachedVolume = await this.repository.sumVolumeForDateRange(
+      const cachedMetrics = await this.repository.sumMetricsForDateRange(
         customerId,
         monthStart,
         yesterday,
       );
+      cachedVolume = cachedMetrics.volume;
+      cachedCount = cachedMetrics.depositCount;
     }
 
     const todayMetrics = await this.getRealTimeMetrics(customerId, today, today);
 
     const totalVolume = Math.round((cachedVolume + todayMetrics.volume) * 100) / 100;
-    const totalCount = todayMetrics.depositCount; // Only today's count for now
+    const totalCount = cachedCount + todayMetrics.depositCount;
     
     return {
       volume: totalVolume,
@@ -417,9 +438,9 @@ export class VolumeService {
       for (const date of missingDates) {
         const dateKey = this.formatDate(date);
         const volumes = volumesByDate.get(dateKey) || [];
-        const { totalUsd } = this.calculateTotals(volumes, quotes);
+        const { totalUsd, totalCount } = this.calculateTotals(volumes, quotes);
 
-        await this.repository.upsertDailyVolume(customerId, customerId, date, totalUsd);
+        await this.repository.upsertDailyVolume(customerId, customerId, date, totalUsd, totalCount);
       }
 
       this.logger.log(`Backfill completed for ${customerId}`);
@@ -505,10 +526,10 @@ export class VolumeService {
         }
 
         const quotes = await this.quotesService.getQuotes();
-        const { totalUsd: volume } = this.calculateTotals(volumes, quotes);
-        this.logger.log(`[Snapshot] ${customerId}: Calculated USD volume = $${volume.toFixed(2)}`);
+        const { totalUsd: volume, totalCount: depositCount } = this.calculateTotals(volumes, quotes);
+        this.logger.log(`[Snapshot] ${customerId}: Calculated USD volume = $${volume.toFixed(2)}, deposits = ${depositCount}`);
 
-        const record = await this.repository.upsertDailyVolume(customerId, customerId, dateOnly, volume);
+        const record = await this.repository.upsertDailyVolume(customerId, customerId, dateOnly, volume, depositCount);
         this.logger.log(`[Snapshot] ${customerId}: Saved to daily_environment_volume (id=${record.id})`);
         
         success.push(customerId);

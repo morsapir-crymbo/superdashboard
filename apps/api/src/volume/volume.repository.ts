@@ -7,6 +7,7 @@ export interface DailyVolumeRecord {
   customerId: string;
   environmentId: string;
   volume: Decimal;
+  depositCount: number;
   date: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -50,6 +51,7 @@ export class VolumeRepository {
     environmentId: string,
     date: Date,
     volume: number,
+    depositCount: number = 0,
   ): Promise<DailyVolumeRecord> {
     const dateOnly = new Date(date.toISOString().split('T')[0]);
 
@@ -63,12 +65,14 @@ export class VolumeRepository {
       },
       update: {
         volume,
+        depositCount,
       },
       create: {
         customerId,
         environmentId,
         date: dateOnly,
         volume,
+        depositCount,
       },
     });
   }
@@ -140,5 +144,46 @@ export class VolumeRepository {
     });
 
     return record?.volume?.toNumber() || 0;
+  }
+
+  async getMetricsForDate(customerId: string, date: Date): Promise<{ volume: number; depositCount: number }> {
+    const dateOnly = new Date(date.toISOString().split('T')[0]);
+    
+    const record = await this.prisma.dailyEnvironmentVolume.findFirst({
+      where: {
+        customerId,
+        date: dateOnly,
+      },
+    });
+
+    return {
+      volume: record?.volume?.toNumber() || 0,
+      depositCount: record?.depositCount || 0,
+    };
+  }
+
+  async sumMetricsForDateRange(
+    customerId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<{ volume: number; depositCount: number }> {
+    const result = await this.prisma.dailyEnvironmentVolume.aggregate({
+      where: {
+        customerId,
+        date: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      _sum: {
+        volume: true,
+        depositCount: true,
+      },
+    });
+
+    return {
+      volume: result._sum.volume?.toNumber() || 0,
+      depositCount: result._sum.depositCount || 0,
+    };
   }
 }

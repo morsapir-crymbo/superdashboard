@@ -167,6 +167,7 @@ export class DepositRepository {
       SELECT 
         DATE(d.updated_at) AS query_date,
         ${amountExpression} AS total_amount,
+        COUNT(*) AS deposit_count,
         d.currency,
         d.currency_id
       FROM deposits d
