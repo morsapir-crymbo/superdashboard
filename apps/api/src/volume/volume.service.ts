@@ -3,6 +3,7 @@ import { VolumeRepository } from './volume.repository';
 import { DepositRepository } from '../deposit/deposit.repository';
 import { QuotesService } from '../shared/quotes.service';
 import { DepositVolumeResult } from '../deposit/types/deposit.dto';
+import { getAllDefinedCustomerIds } from '../deposit/types/customer-config';
 
 export interface CustomerVolumeDetail {
   customerId: string;
@@ -20,6 +21,14 @@ export interface CustomerVolumeDetail {
   }[];
 }
 
+const CUSTOMER_DISPLAY_NAMES: Record<string, string> = {
+  digiblox: 'Digiblox',
+  javashk: 'Javashk',
+  montrex: 'Montrex',
+  orocalab: 'Orocalab',
+  bnp: 'BNP',
+};
+
 @Injectable()
 export class VolumeService {
   private readonly logger = new Logger(VolumeService.name);
@@ -33,14 +42,18 @@ export class VolumeService {
   ) {}
 
   async getAllCustomersStats(): Promise<CustomerVolumeDetail[]> {
-    const customerIds = this.depositRepository.getAllCustomerIds();
-    this.logger.log(`Fetching stats for ${customerIds.length} customers: ${customerIds.join(', ')}`);
+    const configuredCustomerIds = this.depositRepository.getAllCustomerIds();
+    this.logger.log(`Configured customers (with DB creds): ${configuredCustomerIds.length > 0 ? configuredCustomerIds.join(', ') : '(none)'}`);
     
-    if (customerIds.length === 0) {
-      this.logger.warn('No customers configured - check environment variables for DB connections');
-      return [];
+    if (configuredCustomerIds.length > 0) {
+      return this.getStatsWithRealTimeData(configuredCustomerIds);
     }
 
+    this.logger.log('No customers configured with DB credentials - falling back to cached snapshot data');
+    return this.getStatsFromSnapshotOnly();
+  }
+
+  private async getStatsWithRealTimeData(customerIds: string[]): Promise<CustomerVolumeDetail[]> {
     const results: CustomerVolumeDetail[] = [];
 
     for (let i = 0; i < customerIds.length; i += this.CONCURRENCY_LIMIT) {
@@ -53,6 +66,74 @@ export class VolumeService {
     }
 
     this.logger.log(`Completed fetching stats for ${results.length} customers`);
+    return results;
+  }
+
+  private async getStatsFromSnapshotOnly(): Promise<CustomerVolumeDetail[]> {
+    const now = this.getNowUTC();
+    const today = this.getDateOnlyUTC(now);
+    const thirtyDaysAgo = this.getDateOnlyUTC(
+      new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+    );
+    const monthStart = this.getMonthStartUTC(now);
+
+    const allRecords = await this.repository.findByDateRange(thirtyDaysAgo, today);
+    this.logger.log(`Found ${allRecords.length} snapshot records for last 30 days`);
+
+    if (allRecords.length === 0) {
+      this.logger.warn('No snapshot data found in database');
+      return [];
+    }
+
+    const customerIds = [...new Set(allRecords.map((r) => r.customerId))];
+    this.logger.log(`Customers with snapshot data: ${customerIds.join(', ')}`);
+
+    const results: CustomerVolumeDetail[] = [];
+
+    for (const customerId of customerIds) {
+      const customerRecords = allRecords.filter((r) => r.customerId === customerId);
+      
+      let last30Days = 0;
+      let todayVolume = 0;
+      let monthToDate = 0;
+
+      for (const record of customerRecords) {
+        const recordDate = record.date.toISOString().split('T')[0];
+        const todayStr = today.toISOString().split('T')[0];
+        const monthStartStr = monthStart.toISOString().split('T')[0];
+        const volume = Number(record.volume);
+
+        last30Days += volume;
+
+        if (recordDate === todayStr) {
+          todayVolume = volume;
+        }
+
+        if (recordDate >= monthStartStr) {
+          monthToDate += volume;
+        }
+      }
+
+      results.push({
+        customerId,
+        customerName: CUSTOMER_DISPLAY_NAMES[customerId] || customerId,
+        summary: {
+          last30Days: Math.round(last30Days * 100) / 100,
+          today: Math.round(todayVolume * 100) / 100,
+          monthToDate: Math.round(monthToDate * 100) / 100,
+        },
+        environments: [
+          {
+            environmentId: customerId,
+            last30Days: Math.round(last30Days * 100) / 100,
+            today: Math.round(todayVolume * 100) / 100,
+            monthToDate: Math.round(monthToDate * 100) / 100,
+          },
+        ],
+      });
+    }
+
+    this.logger.log(`Returning stats for ${results.length} customers from snapshot data`);
     return results;
   }
 
