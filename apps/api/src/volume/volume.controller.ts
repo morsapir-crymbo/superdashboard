@@ -80,6 +80,7 @@ export class VolumeController {
       const stats = await this.volumeService.getAllCustomersStats();
       return {
         recalculated: false,
+        reason: 'no_credentials',
         message: 'No customer databases configured. Returning cached data.',
         stats,
       };
@@ -94,8 +95,23 @@ export class VolumeController {
       const stats = await this.volumeService.getAllCustomersStats();
       this.logger.log(`[Recalculate] Returning updated stats for ${stats.length} customers`);
       
+      // If all customers failed, it's likely a network issue
+      if (result.failed.length === configured.length && result.success.length === 0) {
+        return {
+          recalculated: false,
+          reason: 'connection_failed',
+          message: 'Could not connect to customer databases. This may be due to network restrictions. Returning cached data.',
+          timestamp: new Date().toISOString(),
+          snapshotResult: {
+            success: result.success,
+            failed: result.failed,
+          },
+          stats,
+        };
+      }
+      
       return {
-        recalculated: true,
+        recalculated: result.success.length > 0,
         timestamp: new Date().toISOString(),
         snapshotResult: {
           success: result.success,
@@ -106,14 +122,26 @@ export class VolumeController {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`[Recalculate] Failed: ${message}`);
-      throw new HttpException(
-        {
-          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-          message: `Recalculation failed: ${message}`,
-          error: 'Internal Server Error',
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      
+      // On error, still try to return cached data
+      try {
+        const stats = await this.volumeService.getAllCustomersStats();
+        return {
+          recalculated: false,
+          reason: 'error',
+          message: `Recalculation failed: ${message}. Returning cached data.`,
+          stats,
+        };
+      } catch (fallbackError) {
+        throw new HttpException(
+          {
+            statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+            message: `Recalculation failed: ${message}`,
+            error: 'Internal Server Error',
+          },
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
     }
   }
 

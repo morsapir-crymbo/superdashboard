@@ -46,7 +46,14 @@ export class VolumeService {
     this.logger.log(`Configured customers (with DB creds): ${configuredCustomerIds.length > 0 ? configuredCustomerIds.join(', ') : '(none)'}`);
     
     if (configuredCustomerIds.length > 0) {
-      return this.getStatsWithRealTimeData(configuredCustomerIds);
+      try {
+        return await this.getStatsWithRealTimeData(configuredCustomerIds);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Failed to get real-time data: ${message}`);
+        this.logger.log('Falling back to cached snapshot data due to connection error');
+        return this.getStatsFromSnapshotOnly();
+      }
     }
 
     this.logger.log('No customers configured with DB credentials - falling back to cached snapshot data');

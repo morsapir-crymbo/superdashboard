@@ -18,6 +18,8 @@ export class ConnectionPoolManager implements OnModuleDestroy {
     waitForConnections: true,
     enableKeepAlive: true,
     keepAliveInitialDelay: 30000,
+    connectTimeout: 10000, // 10 second connection timeout
+    acquireTimeout: 10000, // 10 second acquire timeout
   };
 
   async getConnection(customerId: string, dbConfig: CustomerDbConfig): Promise<mysql.PoolConnection> {
