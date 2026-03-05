@@ -116,9 +116,24 @@ export class VolumeService {
     for (const customerId of customerIds) {
       const customerRecords = allRecords.filter((r) => r.customerId === customerId);
       
+      // Sort records by date descending to find the most recent non-zero value
+      const sortedRecords = [...customerRecords].sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+      
       let last30Days = 0;
       let todayVolume = 0;
       let monthToDate = 0;
+      let lastKnownDailyVolume = 0;
+
+      // Find the most recent non-zero daily volume (for fallback)
+      for (const record of sortedRecords) {
+        const volume = Number(record.volume);
+        if (volume > 0) {
+          lastKnownDailyVolume = volume;
+          break;
+        }
+      }
 
       for (const record of customerRecords) {
         const recordDate = record.date.toISOString().split('T')[0];
@@ -126,15 +141,30 @@ export class VolumeService {
         const monthStartStr = monthStart.toISOString().split('T')[0];
         const volume = Number(record.volume);
 
+        // For last30Days sum, use actual values (including 0s for days with no activity)
         last30Days += volume;
 
         if (recordDate === todayStr) {
-          todayVolume = volume;
+          // If today's value is 0, use the last known daily volume as estimate
+          // This handles the case where we couldn't fetch fresh data
+          todayVolume = volume > 0 ? volume : lastKnownDailyVolume;
+          if (volume === 0 && lastKnownDailyVolume > 0) {
+            this.logger.log(`[Snapshot] ${customerId}: Today value is 0, using last known value: $${lastKnownDailyVolume}`);
+          }
         }
 
         if (recordDate >= monthStartStr) {
           monthToDate += volume;
         }
+      }
+
+      // If today wasn't in the records at all, use last known value
+      const hasTodayRecord = customerRecords.some(r => 
+        r.date.toISOString().split('T')[0] === today.toISOString().split('T')[0]
+      );
+      if (!hasTodayRecord && lastKnownDailyVolume > 0) {
+        todayVolume = lastKnownDailyVolume;
+        this.logger.log(`[Snapshot] ${customerId}: No today record, using last known value: $${lastKnownDailyVolume}`);
       }
 
       results.push({
@@ -366,19 +396,20 @@ export class VolumeService {
     return Math.round(total * 100) / 100;
   }
 
-  async captureSnapshotForDate(date: Date): Promise<{ success: string[]; failed: string[] }> {
+  async captureSnapshotForDate(date: Date): Promise<{ success: string[]; failed: string[]; skipped: string[] }> {
     const customerIds = this.depositRepository.getAllCustomerIds();
     const dateOnly = this.getDateOnlyUTC(date);
     const dateStr = dateOnly.toISOString().split('T')[0];
     const success: string[] = [];
     const failed: string[] = [];
+    const skipped: string[] = [];
 
     this.logger.log(`[Snapshot] Starting capture for ${dateStr}`);
     this.logger.log(`[Snapshot] Customers to process: ${customerIds.length > 0 ? customerIds.join(', ') : '(none)'}`);
 
     if (customerIds.length === 0) {
       this.logger.warn('[Snapshot] No customers configured - check environment variables');
-      return { success: [], failed: [] };
+      return { success: [], failed: [], skipped: [] };
     }
 
     for (const customerId of customerIds) {
@@ -390,6 +421,13 @@ export class VolumeService {
           end: dateOnly,
         });
         this.logger.log(`[Snapshot] ${customerId}: Got ${volumes.length} currency rows from DB`);
+
+        // If no data returned, don't save 0 - this likely means connection failed
+        if (volumes.length === 0) {
+          this.logger.warn(`[Snapshot] ${customerId}: No data returned - skipping to preserve existing value`);
+          skipped.push(customerId);
+          continue;
+        }
 
         const quotes = await this.quotesService.getQuotes();
         const volume = this.calculateTotalUsd(volumes, quotes);
@@ -406,8 +444,8 @@ export class VolumeService {
       }
     }
 
-    this.logger.log(`[Snapshot] Completed for ${dateStr}: ${success.length} success, ${failed.length} failed`);
-    return { success, failed };
+    this.logger.log(`[Snapshot] Completed for ${dateStr}: ${success.length} success, ${failed.length} failed, ${skipped.length} skipped`);
+    return { success, failed, skipped };
   }
 
   private getNowUTC(): Date {

@@ -95,8 +95,9 @@ export class VolumeController {
       const stats = await this.volumeService.getAllCustomersStats();
       this.logger.log(`[Recalculate] Returning updated stats for ${stats.length} customers`);
       
-      // If all customers failed, it's likely a network issue
-      if (result.failed.length === configured.length && result.success.length === 0) {
+      // If all customers failed or were skipped, it's likely a network issue
+      const totalProcessed = result.success.length + result.failed.length + (result.skipped?.length || 0);
+      if (result.success.length === 0 && totalProcessed > 0) {
         return {
           recalculated: false,
           reason: 'connection_failed',
@@ -105,6 +106,7 @@ export class VolumeController {
           snapshotResult: {
             success: result.success,
             failed: result.failed,
+            skipped: result.skipped || [],
           },
           stats,
         };
@@ -116,6 +118,7 @@ export class VolumeController {
         snapshotResult: {
           success: result.success,
           failed: result.failed,
+          skipped: result.skipped || [],
         },
         stats,
       };
