@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState } from 'react';
-import { ChevronDown, ChevronRight, Building2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Building2, Hash, Calculator } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import {
   Table,
@@ -12,7 +12,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { CustomerVolumeStats } from '@/lib/types/stats';
+import { CustomerVolumeStats, MetricSet } from '@/lib/types/stats';
 
 interface CustomerBreakdownCardProps {
   customer: CustomerVolumeStats;
@@ -37,6 +37,10 @@ function formatFullCurrency(value: number): string {
   }).format(value);
 }
 
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat('en-US').format(value);
+}
+
 function getVolumeColor(value: number): string {
   if (value === 0) return 'text-slate-400';
   if (value >= 1_000_000) return 'text-emerald-600';
@@ -44,10 +48,39 @@ function getVolumeColor(value: number): string {
   return 'text-slate-900';
 }
 
+interface MetricCellProps {
+  metrics: MetricSet;
+  isToday?: boolean;
+}
+
+function MetricCell({ metrics, isToday = false }: MetricCellProps) {
+  const volumeColor = isToday 
+    ? (metrics.volume > 0 ? 'text-emerald-600' : 'text-slate-400')
+    : getVolumeColor(metrics.volume);
+
+  return (
+    <div className="text-right space-y-1">
+      <p className={cn('text-lg font-bold tabular-nums', volumeColor)}>
+        {formatCurrency(metrics.volume)}
+      </p>
+      <div className="flex items-center justify-end gap-3 text-xs">
+        <span className="text-slate-500 flex items-center gap-1">
+          <Hash className="h-3 w-3" />
+          {formatNumber(metrics.depositCount)}
+        </span>
+        <span className="text-slate-500 flex items-center gap-1">
+          <Calculator className="h-3 w-3" />
+          {metrics.depositCount > 0 ? formatCurrency(metrics.avgPerDeposit) : 'N/A'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function CustomerBreakdownCardComponent({ customer }: CustomerBreakdownCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasEnvironments = customer.environments.length > 1;
-  const isActive = customer.summary.last30Days > 0 || customer.summary.today > 0;
+  const isActive = customer.summary.last30Days.volume > 0 || customer.summary.today.volume > 0;
 
   return (
     <Card
@@ -89,45 +122,24 @@ function CustomerBreakdownCardComponent({ customer }: CustomerBreakdownCardProps
             </div>
           </div>
 
-          <div className="flex items-center gap-8">
-            <div className="text-right">
-              <p className="text-xs text-slate-500 uppercase tracking-wide">
+          <div className="flex items-center gap-6">
+            <div>
+              <p className="text-xs text-slate-500 uppercase tracking-wide text-right mb-1">
                 30 Days
               </p>
-              <p
-                className={cn(
-                  'text-lg font-bold tabular-nums',
-                  getVolumeColor(customer.summary.last30Days)
-                )}
-              >
-                {formatCurrency(customer.summary.last30Days)}
-              </p>
+              <MetricCell metrics={customer.summary.last30Days} />
             </div>
-            <div className="text-right">
-              <p className="text-xs text-slate-500 uppercase tracking-wide">
+            <div>
+              <p className="text-xs text-slate-500 uppercase tracking-wide text-right mb-1">
                 Today
               </p>
-              <p
-                className={cn(
-                  'text-lg font-bold tabular-nums',
-                  customer.summary.today > 0 ? 'text-emerald-600' : 'text-slate-400'
-                )}
-              >
-                {formatCurrency(customer.summary.today)}
-              </p>
+              <MetricCell metrics={customer.summary.today} isToday />
             </div>
-            <div className="text-right">
-              <p className="text-xs text-slate-500 uppercase tracking-wide">
+            <div>
+              <p className="text-xs text-slate-500 uppercase tracking-wide text-right mb-1">
                 MTD
               </p>
-              <p
-                className={cn(
-                  'text-lg font-bold tabular-nums',
-                  getVolumeColor(customer.summary.monthToDate)
-                )}
-              >
-                {formatCurrency(customer.summary.monthToDate)}
-              </p>
+              <MetricCell metrics={customer.summary.monthToDate} />
             </div>
           </div>
         </div>
@@ -137,7 +149,7 @@ function CustomerBreakdownCardComponent({ customer }: CustomerBreakdownCardProps
         <div
           className={cn(
             'overflow-hidden transition-all duration-300',
-            isExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'
+            isExpanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'
           )}
         >
           <div className="border-t border-slate-100 bg-slate-50 p-4">
@@ -145,9 +157,12 @@ function CustomerBreakdownCardComponent({ customer }: CustomerBreakdownCardProps
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-left">Environment</TableHead>
-                  <TableHead>Last 30 Days</TableHead>
-                  <TableHead>Today</TableHead>
-                  <TableHead>Month to Date</TableHead>
+                  <TableHead className="text-right">30D Volume</TableHead>
+                  <TableHead className="text-right">30D Count</TableHead>
+                  <TableHead className="text-right">30D Avg</TableHead>
+                  <TableHead className="text-right">Today Vol</TableHead>
+                  <TableHead className="text-right">Today Count</TableHead>
+                  <TableHead className="text-right">Today Avg</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -157,23 +172,30 @@ function CustomerBreakdownCardComponent({ customer }: CustomerBreakdownCardProps
                       {env.environmentId}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      <span className={getVolumeColor(env.last30Days)}>
-                        {formatFullCurrency(env.last30Days)}
+                      <span className={getVolumeColor(env.last30Days.volume)}>
+                        {formatFullCurrency(env.last30Days.volume)}
                       </span>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      <span
-                        className={
-                          env.today > 0 ? 'text-emerald-600' : 'text-slate-400'
-                        }
-                      >
-                        {formatFullCurrency(env.today)}
-                      </span>
+                    <TableCell className="text-right tabular-nums text-slate-600">
+                      {formatNumber(env.last30Days.depositCount)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-slate-600">
+                      {env.last30Days.depositCount > 0 
+                        ? formatCurrency(env.last30Days.avgPerDeposit) 
+                        : 'N/A'}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      <span className={getVolumeColor(env.monthToDate)}>
-                        {formatFullCurrency(env.monthToDate)}
+                      <span className={env.today.volume > 0 ? 'text-emerald-600' : 'text-slate-400'}>
+                        {formatFullCurrency(env.today.volume)}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-slate-600">
+                      {formatNumber(env.today.depositCount)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-slate-600">
+                      {env.today.depositCount > 0 
+                        ? formatCurrency(env.today.avgPerDeposit) 
+                        : 'N/A'}
                     </TableCell>
                   </TableRow>
                 ))}

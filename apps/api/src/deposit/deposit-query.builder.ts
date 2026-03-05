@@ -28,6 +28,7 @@ export class DepositQueryBuilder {
     const sql = `
       SELECT 
         ${amountExpression} AS total_amount,
+        COUNT(*) AS deposit_count,
         d.currency,
         d.currency_id
       FROM deposits d

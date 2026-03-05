@@ -33,6 +33,10 @@ function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
 }
 
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat('en-US').format(value);
+}
+
 function SortIcon({ field, sortField, sortDirection }: { 
   field: SortField; 
   sortField: SortField | null;
@@ -84,8 +88,8 @@ function EnvironmentTableComponent({
         aVal = a.environmentId;
         bVal = b.environmentId;
       } else {
-        aVal = a[sortField];
-        bVal = b[sortField];
+        aVal = a[sortField].volume;
+        bVal = b[sortField].volume;
       }
 
       if (typeof aVal === 'string') {
@@ -153,7 +157,12 @@ function EnvironmentTableComponent({
                   highlightMetric === metric.key && 'bg-slate-100 font-semibold'
                 )}
               >
-                {formatCurrency(env[metric.key])}
+                <div>
+                  <div>{formatCurrency(env[metric.key].volume)}</div>
+                  <div className="text-xs text-slate-400">
+                    {formatNumber(env[metric.key].depositCount)} deposits
+                  </div>
+                </div>
               </TableCell>
             ))}
           </TableRow>

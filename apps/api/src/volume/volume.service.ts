@@ -2,22 +2,28 @@ import { Injectable, Logger } from '@nestjs/common';
 import { VolumeRepository } from './volume.repository';
 import { DepositRepository } from '../deposit/deposit.repository';
 import { QuotesService } from '../shared/quotes.service';
-import { DepositVolumeResult } from '../deposit/types/deposit.dto';
+import { DepositVolumeResult, VolumeMetrics, calculateAvgPerDeposit } from '../deposit/types/deposit.dto';
 import { getAllDefinedCustomerIds } from '../deposit/types/customer-config';
+
+export interface MetricSet {
+  volume: number;
+  depositCount: number;
+  avgPerDeposit: number;
+}
 
 export interface CustomerVolumeDetail {
   customerId: string;
   customerName: string;
   summary: {
-    last30Days: number;
-    today: number;
-    monthToDate: number;
+    last30Days: MetricSet;
+    today: MetricSet;
+    monthToDate: MetricSet;
   };
   environments: {
     environmentId: string;
-    last30Days: number;
-    today: number;
-    monthToDate: number;
+    last30Days: MetricSet;
+    today: MetricSet;
+    monthToDate: MetricSet;
   }[];
 }
 
@@ -73,7 +79,7 @@ export class VolumeService {
       
       // Count how many returned zero data (likely connection failures)
       for (const result of batchResults) {
-        if (result.summary.last30Days === 0 && result.summary.today === 0 && result.summary.monthToDate === 0) {
+        if (result.summary.last30Days.volume === 0 && result.summary.today.volume === 0 && result.summary.monthToDate.volume === 0) {
           connectionFailures++;
         }
       }
@@ -141,12 +147,9 @@ export class VolumeService {
         const monthStartStr = monthStart.toISOString().split('T')[0];
         const volume = Number(record.volume);
 
-        // For last30Days sum, use actual values (including 0s for days with no activity)
         last30Days += volume;
 
         if (recordDate === todayStr) {
-          // If today's value is 0, use the last known daily volume as estimate
-          // This handles the case where we couldn't fetch fresh data
           todayVolume = volume > 0 ? volume : lastKnownDailyVolume;
           if (volume === 0 && lastKnownDailyVolume > 0) {
             this.logger.log(`[Snapshot] ${customerId}: Today value is 0, using last known value: $${lastKnownDailyVolume}`);
@@ -158,7 +161,6 @@ export class VolumeService {
         }
       }
 
-      // If today wasn't in the records at all, use last known value
       const hasTodayRecord = customerRecords.some(r => 
         r.date.toISOString().split('T')[0] === today.toISOString().split('T')[0]
       );
@@ -167,20 +169,37 @@ export class VolumeService {
         this.logger.log(`[Snapshot] ${customerId}: No today record, using last known value: $${lastKnownDailyVolume}`);
       }
 
+      // Note: Snapshot data doesn't include deposit counts, so we show 0 for those
+      const last30DaysMetrics: MetricSet = {
+        volume: Math.round(last30Days * 100) / 100,
+        depositCount: 0,
+        avgPerDeposit: 0,
+      };
+      const todayMetrics: MetricSet = {
+        volume: Math.round(todayVolume * 100) / 100,
+        depositCount: 0,
+        avgPerDeposit: 0,
+      };
+      const mtdMetrics: MetricSet = {
+        volume: Math.round(monthToDate * 100) / 100,
+        depositCount: 0,
+        avgPerDeposit: 0,
+      };
+
       results.push({
         customerId,
         customerName: CUSTOMER_DISPLAY_NAMES[customerId] || customerId,
         summary: {
-          last30Days: Math.round(last30Days * 100) / 100,
-          today: Math.round(todayVolume * 100) / 100,
-          monthToDate: Math.round(monthToDate * 100) / 100,
+          last30Days: last30DaysMetrics,
+          today: todayMetrics,
+          monthToDate: mtdMetrics,
         },
         environments: [
           {
             environmentId: customerId,
-            last30Days: Math.round(last30Days * 100) / 100,
-            today: Math.round(todayVolume * 100) / 100,
-            monthToDate: Math.round(monthToDate * 100) / 100,
+            last30Days: last30DaysMetrics,
+            today: todayMetrics,
+            monthToDate: mtdMetrics,
           },
         ],
       });
@@ -188,6 +207,10 @@ export class VolumeService {
 
     this.logger.log(`Returning stats for ${results.length} customers from snapshot data`);
     return results;
+  }
+
+  private createEmptyMetricSet(): MetricSet {
+    return { volume: 0, depositCount: 0, avgPerDeposit: 0 };
   }
 
   private async getCustomerStatsSafe(customerId: string): Promise<CustomerVolumeDetail> {
@@ -199,7 +222,11 @@ export class VolumeService {
       return {
         customerId,
         customerName: config?.displayName || customerId,
-        summary: { last30Days: 0, today: 0, monthToDate: 0 },
+        summary: {
+          last30Days: this.createEmptyMetricSet(),
+          today: this.createEmptyMetricSet(),
+          monthToDate: this.createEmptyMetricSet(),
+        },
         environments: [],
       };
     }
@@ -218,19 +245,23 @@ export class VolumeService {
     );
     const monthStart = this.getMonthStartUTC(now);
 
-    const [last30Days, realTimeTodayVolume, mtd] = await Promise.all([
-      this.getVolumeForRange(customerId, thirtyDaysAgo, today),
-      this.getRealTimeVolumeUsd(customerId, today, today),
-      this.getMonthToDateVolume(customerId, monthStart, today),
+    const [last30DaysMetrics, realTimeTodayMetrics, mtdMetrics] = await Promise.all([
+      this.getMetricsForRange(customerId, thirtyDaysAgo, today),
+      this.getRealTimeMetrics(customerId, today, today),
+      this.getMonthToDateMetrics(customerId, monthStart, today),
     ]);
 
-    // If real-time fetch returned 0, try to get today's value from snapshot table
-    let todayVolume = realTimeTodayVolume;
-    if (todayVolume === 0) {
+    // If real-time fetch returned 0 volume, try to get today's value from snapshot table
+    let todayMetrics = realTimeTodayMetrics;
+    if (todayMetrics.volume === 0) {
       try {
         const snapshotValue = await this.repository.getVolumeForDate(customerId, today);
         if (snapshotValue > 0) {
-          todayVolume = snapshotValue;
+          todayMetrics = {
+            volume: snapshotValue,
+            depositCount: 0, // We don't store deposit count in snapshot
+            avgPerDeposit: 0,
+          };
           this.logger.log(`[Stats] ${customerId}: Real-time returned 0, using snapshot value: $${snapshotValue}`);
         }
       } catch (error) {
@@ -240,10 +271,10 @@ export class VolumeService {
 
     // Upsert today's volume to the snapshot table on each refresh
     // Only save if we got actual data from real-time (not from snapshot fallback)
-    if (realTimeTodayVolume > 0) {
+    if (realTimeTodayMetrics.volume > 0) {
       try {
-        await this.repository.upsertDailyVolume(customerId, customerId, today, realTimeTodayVolume);
-        this.logger.debug(`[Stats] Upserted today's volume for ${customerId}: $${realTimeTodayVolume}`);
+        await this.repository.upsertDailyVolume(customerId, customerId, today, realTimeTodayMetrics.volume);
+        this.logger.debug(`[Stats] Upserted today's volume for ${customerId}: $${realTimeTodayMetrics.volume}`);
       } catch (error) {
         this.logger.warn(`[Stats] Failed to upsert today's volume for ${customerId}`, error);
       }
@@ -255,34 +286,34 @@ export class VolumeService {
       customerId,
       customerName: config.displayName,
       summary: {
-        last30Days,
-        today: todayVolume,
-        monthToDate: mtd,
+        last30Days: last30DaysMetrics,
+        today: todayMetrics,
+        monthToDate: mtdMetrics,
       },
       environments: [
         {
           environmentId: customerId,
-          last30Days,
-          today: todayVolume,
-          monthToDate: mtd,
+          last30Days: last30DaysMetrics,
+          today: todayMetrics,
+          monthToDate: mtdMetrics,
         },
       ],
     };
   }
 
-  private async getVolumeForRange(
+  private async getMetricsForRange(
     customerId: string,
     startDate: Date,
     endDate: Date,
-  ): Promise<number> {
+  ): Promise<MetricSet> {
     const yesterday = this.getYesterdayUTC();
     const cachedEndDate = endDate > yesterday ? yesterday : endDate;
 
-    let cachedTotal = 0;
+    let cachedVolume = 0;
 
     if (startDate <= cachedEndDate) {
       await this.ensureDataBackfilled(customerId, startDate, cachedEndDate);
-      cachedTotal = await this.repository.sumVolumeForDateRange(
+      cachedVolume = await this.repository.sumVolumeForDateRange(
         customerId,
         startDate,
         cachedEndDate,
@@ -290,20 +321,27 @@ export class VolumeService {
     }
 
     const today = this.getDateOnlyUTC(this.getNowUTC());
-    let todayTotal = 0;
+    let todayMetrics: MetricSet = this.createEmptyMetricSet();
 
     if (endDate >= today) {
-      todayTotal = await this.getRealTimeVolumeUsd(customerId, today, today);
+      todayMetrics = await this.getRealTimeMetrics(customerId, today, today);
     }
 
-    return Math.round((cachedTotal + todayTotal) * 100) / 100;
+    const totalVolume = Math.round((cachedVolume + todayMetrics.volume) * 100) / 100;
+    const totalCount = todayMetrics.depositCount; // Only today's count for now (historical not stored)
+    
+    return {
+      volume: totalVolume,
+      depositCount: totalCount,
+      avgPerDeposit: calculateAvgPerDeposit(totalVolume, totalCount),
+    };
   }
 
-  private async getMonthToDateVolume(
+  private async getMonthToDateMetrics(
     customerId: string,
     monthStart: Date,
     today: Date,
-  ): Promise<number> {
+  ): Promise<MetricSet> {
     const yesterday = this.getYesterdayUTC();
 
     let cachedVolume = 0;
@@ -316,9 +354,16 @@ export class VolumeService {
       );
     }
 
-    const todayVolume = await this.getRealTimeVolumeUsd(customerId, today, today);
+    const todayMetrics = await this.getRealTimeMetrics(customerId, today, today);
 
-    return Math.round((cachedVolume + todayVolume) * 100) / 100;
+    const totalVolume = Math.round((cachedVolume + todayMetrics.volume) * 100) / 100;
+    const totalCount = todayMetrics.depositCount; // Only today's count for now
+    
+    return {
+      volume: totalVolume,
+      depositCount: totalCount,
+      avgPerDeposit: calculateAvgPerDeposit(totalVolume, totalCount),
+    };
   }
 
   private async ensureDataBackfilled(
@@ -372,7 +417,7 @@ export class VolumeService {
       for (const date of missingDates) {
         const dateKey = this.formatDate(date);
         const volumes = volumesByDate.get(dateKey) || [];
-        const totalUsd = this.calculateTotalUsd(volumes, quotes);
+        const { totalUsd } = this.calculateTotals(volumes, quotes);
 
         await this.repository.upsertDailyVolume(customerId, customerId, date, totalUsd);
       }
@@ -383,11 +428,11 @@ export class VolumeService {
     }
   }
 
-  async getRealTimeVolumeUsd(
+  async getRealTimeMetrics(
     customerId: string,
     startDate: Date,
     endDate: Date,
-  ): Promise<number> {
+  ): Promise<MetricSet> {
     try {
       const volumes = await this.depositRepository.getVolumeByDateRange(customerId, {
         start: startDate,
@@ -395,24 +440,35 @@ export class VolumeService {
       });
 
       const quotes = await this.quotesService.getQuotes();
-      return this.calculateTotalUsd(volumes, quotes);
+      const { totalUsd, totalCount } = this.calculateTotals(volumes, quotes);
+      
+      return {
+        volume: totalUsd,
+        depositCount: totalCount,
+        avgPerDeposit: calculateAvgPerDeposit(totalUsd, totalCount),
+      };
     } catch (error) {
-      this.logger.error(`Failed to get real-time volume for ${customerId}`, error);
-      return 0;
+      this.logger.error(`Failed to get real-time metrics for ${customerId}`, error);
+      return this.createEmptyMetricSet();
     }
   }
 
-  private calculateTotalUsd(
+  private calculateTotals(
     volumes: DepositVolumeResult[],
     quotes: Record<string, number>,
-  ): number {
-    let total = 0;
+  ): { totalUsd: number; totalCount: number } {
+    let totalUsd = 0;
+    let totalCount = 0;
 
     for (const vol of volumes) {
-      total += this.quotesService.convertToUsd(vol.amount, vol.currency, quotes);
+      totalUsd += this.quotesService.convertToUsd(vol.amount, vol.currency, quotes);
+      totalCount += vol.depositCount;
     }
 
-    return Math.round(total * 100) / 100;
+    return {
+      totalUsd: Math.round(totalUsd * 100) / 100,
+      totalCount,
+    };
   }
 
   async captureSnapshotForDate(date: Date): Promise<{ success: string[]; failed: string[]; skipped: string[] }> {
@@ -449,7 +505,7 @@ export class VolumeService {
         }
 
         const quotes = await this.quotesService.getQuotes();
-        const volume = this.calculateTotalUsd(volumes, quotes);
+        const { totalUsd: volume } = this.calculateTotals(volumes, quotes);
         this.logger.log(`[Snapshot] ${customerId}: Calculated USD volume = $${volume.toFixed(2)}`);
 
         const record = await this.repository.upsertDailyVolume(customerId, customerId, dateOnly, volume);

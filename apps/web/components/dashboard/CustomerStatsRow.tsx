@@ -64,7 +64,7 @@ function CustomerStatsRowComponent({ customer }: CustomerStatsRowProps) {
             <StatsCard
               key={metric.key}
               label={metric.label}
-              value={customer.summary[metric.key]}
+              metrics={customer.summary[metric.key]}
               isActive={activeMetric === metric.key}
               onClick={() => handleCardClick(metric.key)}
             />
