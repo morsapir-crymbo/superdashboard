@@ -257,21 +257,44 @@ export class VolumeService {
   async captureSnapshotForDate(date: Date): Promise<{ success: string[]; failed: string[] }> {
     const customerIds = this.depositRepository.getAllCustomerIds();
     const dateOnly = this.getDateOnlyUTC(date);
+    const dateStr = dateOnly.toISOString().split('T')[0];
     const success: string[] = [];
     const failed: string[] = [];
 
+    this.logger.log(`[Snapshot] Starting capture for ${dateStr}`);
+    this.logger.log(`[Snapshot] Customers to process: ${customerIds.length > 0 ? customerIds.join(', ') : '(none)'}`);
+
+    if (customerIds.length === 0) {
+      this.logger.warn('[Snapshot] No customers configured - check environment variables');
+      return { success: [], failed: [] };
+    }
+
     for (const customerId of customerIds) {
       try {
-        const volume = await this.getRealTimeVolumeUsd(customerId, dateOnly, dateOnly);
-        await this.repository.upsertDailyVolume(customerId, customerId, dateOnly, volume);
-        this.logger.log(`Snapshot captured for ${customerId}: $${volume}`);
+        this.logger.log(`[Snapshot] Processing ${customerId} for ${dateStr}...`);
+        
+        const volumes = await this.depositRepository.getVolumeByDateRange(customerId, {
+          start: dateOnly,
+          end: dateOnly,
+        });
+        this.logger.log(`[Snapshot] ${customerId}: Got ${volumes.length} currency rows from DB`);
+
+        const quotes = await this.quotesService.getQuotes();
+        const volume = this.calculateTotalUsd(volumes, quotes);
+        this.logger.log(`[Snapshot] ${customerId}: Calculated USD volume = $${volume.toFixed(2)}`);
+
+        const record = await this.repository.upsertDailyVolume(customerId, customerId, dateOnly, volume);
+        this.logger.log(`[Snapshot] ${customerId}: Saved to daily_environment_volume (id=${record.id})`);
+        
         success.push(customerId);
       } catch (error) {
-        this.logger.error(`Snapshot failed for ${customerId}`, error);
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`[Snapshot] ${customerId}: FAILED - ${message}`);
         failed.push(customerId);
       }
     }
 
+    this.logger.log(`[Snapshot] Completed for ${dateStr}: ${success.length} success, ${failed.length} failed`);
     return { success, failed };
   }
 

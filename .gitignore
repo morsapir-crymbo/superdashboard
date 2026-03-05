@@ -24,3 +24,6 @@ coverage/
 .env.*.local
 apps/**/.env
 apps/**/.env.local
+
+# Test scripts (may contain sensitive data)
+apps/**/scripts/test-*.ts

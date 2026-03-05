@@ -66,7 +66,8 @@ export class ConnectionPoolManager implements OnModuleDestroy {
       }
     }
 
-    this.logger.log(`Creating connection pool for ${customerId}`);
+    this.logger.log(`[Pool] Creating connection for ${customerId}`);
+    this.logger.log(`[Pool] ${customerId} -> ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`);
 
     const pool = mysql.createPool({
       host: dbConfig.host,

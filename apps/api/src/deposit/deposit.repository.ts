@@ -31,7 +31,12 @@ export class DepositRepository {
     const queryBuilder = new DepositQueryBuilder(config);
     const { sql, params } = queryBuilder.buildVolumeQuery(dateRange.start, dateRange.end);
 
-    this.logger.debug(`Executing query for ${customerId}: ${sql.substring(0, 100)}...`);
+    const startStr = dateRange.start.toISOString().split('T')[0];
+    const endStr = dateRange.end.toISOString().split('T')[0];
+    
+    this.logger.log(`[Query] ${customerId}: ${startStr} to ${endStr}`);
+    this.logger.debug(`[Query] ${customerId} SQL: ${sql.replace(/\s+/g, ' ').substring(0, 200)}...`);
+    this.logger.debug(`[Query] ${customerId} Params: ${JSON.stringify(params)}`);
 
     try {
       const rows = await this.poolManager.executeQuery<DepositVolumeRow>(
@@ -41,9 +46,17 @@ export class DepositRepository {
         params,
       );
 
+      this.logger.log(`[Query] ${customerId}: Got ${rows.length} currency rows`);
+      
+      if (rows.length > 0) {
+        const currencies = rows.map(r => r.currency).join(', ');
+        this.logger.debug(`[Query] ${customerId} currencies: ${currencies}`);
+      }
+
       return rows.map(normalizeDepositRow);
     } catch (error) {
-      this.logger.error(`Failed to query deposits for ${customerId}`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[Query] ${customerId} FAILED: ${message}`);
       throw error;
     }
   }
