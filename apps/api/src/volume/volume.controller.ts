@@ -29,8 +29,9 @@ export class VolumeController {
   ) {}
 
   @Get('stats')
-  async getAllStats() {
-    this.logger.log('GET /volume/stats - Fetching all customer stats');
+  async getAllStats(@Query('recalculate') recalculate?: string) {
+    const shouldRecalculate = recalculate === 'true';
+    this.logger.log(`GET /volume/stats - Fetching all customer stats (recalculate=${shouldRecalculate})`);
     
     const allDefined = getAllDefinedCustomerIds();
     const configured = getCustomerConfigs().map((c) => c.id);
@@ -43,6 +44,14 @@ export class VolumeController {
     }
     
     try {
+      // If recalculate is requested and we have configured customers, recalculate today's data first
+      if (shouldRecalculate && configured.length > 0) {
+        this.logger.log('[Recalculate] Starting recalculation of today\'s data...');
+        const today = new Date();
+        const result = await this.volumeService.captureSnapshotForDate(today);
+        this.logger.log(`[Recalculate] Completed - Success: ${result.success.length}, Failed: ${result.failed.length}`);
+      }
+      
       const stats = await this.volumeService.getAllCustomersStats();
       this.logger.log(`GET /volume/stats - Returned ${stats.length} customers`);
       return stats;
@@ -54,6 +63,53 @@ export class VolumeController {
         {
           statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
           message: `Failed to fetch volume stats: ${message}`,
+          error: 'Internal Server Error',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post('stats/recalculate')
+  async recalculateStats() {
+    this.logger.log('POST /volume/stats/recalculate - Manual recalculation requested');
+    
+    const configured = getCustomerConfigs();
+    if (configured.length === 0) {
+      this.logger.warn('[Recalculate] No customers configured with DB credentials - returning cached data');
+      const stats = await this.volumeService.getAllCustomersStats();
+      return {
+        recalculated: false,
+        message: 'No customer databases configured. Returning cached data.',
+        stats,
+      };
+    }
+
+    try {
+      this.logger.log(`[Recalculate] Starting recalculation for ${configured.length} customers...`);
+      const today = new Date();
+      const result = await this.volumeService.captureSnapshotForDate(today);
+      this.logger.log(`[Recalculate] Snapshot completed - Success: ${result.success.length}, Failed: ${result.failed.length}`);
+      
+      const stats = await this.volumeService.getAllCustomersStats();
+      this.logger.log(`[Recalculate] Returning updated stats for ${stats.length} customers`);
+      
+      return {
+        recalculated: true,
+        timestamp: new Date().toISOString(),
+        snapshotResult: {
+          success: result.success,
+          failed: result.failed,
+        },
+        stats,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`[Recalculate] Failed: ${message}`);
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+          message: `Recalculation failed: ${message}`,
           error: 'Internal Server Error',
         },
         HttpStatus.INTERNAL_SERVER_ERROR,

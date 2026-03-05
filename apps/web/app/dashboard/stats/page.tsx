@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { RefreshCw, Activity } from 'lucide-react';
+import { RefreshCw, Activity, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { TotalVolumeSummary } from '@/components/dashboard/TotalVolumeSummary';
 import { useAutoRefresh } from '@/lib/hooks/useAutoRefresh';
 import { CustomerVolumeStats } from '@/lib/types/stats';
+
+const AUTO_REFRESH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
 export default function StatsPage() {
   const [stats, setStats] = useState<CustomerVolumeStats[]>([]);
@@ -14,11 +16,12 @@ export default function StatsPage() {
   const [error, setError] = useState('');
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(true);
 
-  const fetchStats = useCallback(async (showLoading = false) => {
+  const fetchStats = useCallback(async (showLoading = false, recalculate = false) => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -28,9 +31,27 @@ export default function StatsPage() {
 
     if (showLoading) setLoading(true);
     setIsRefreshing(true);
+    if (recalculate) setIsRecalculating(true);
 
     try {
-      const { data } = await api.get('/volume/stats', { signal });
+      let data: CustomerVolumeStats[];
+
+      if (recalculate) {
+        // Use the recalculate endpoint which fetches fresh data and updates the DB
+        const response = await api.post('/volume/stats/recalculate', {}, { 
+          signal,
+          timeout: 120000, // 2 minute timeout for recalculation
+        });
+        data = response.data.stats || response.data;
+        console.log('[Stats] Recalculation result:', {
+          recalculated: response.data.recalculated,
+          snapshotResult: response.data.snapshotResult,
+        });
+      } else {
+        // Regular fetch from cache/snapshot
+        const response = await api.get('/volume/stats', { signal });
+        data = response.data;
+      }
 
       if (!isMountedRef.current) return;
 
@@ -60,13 +81,15 @@ export default function StatsPage() {
       if (isMountedRef.current) {
         setLoading(false);
         setIsRefreshing(false);
+        setIsRecalculating(false);
       }
     }
   }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
-    fetchStats(true);
+    // Initial load - just fetch cached data quickly
+    fetchStats(true, false);
 
     return () => {
       isMountedRef.current = false;
@@ -77,13 +100,14 @@ export default function StatsPage() {
   }, [fetchStats]);
 
   const { resetInterval } = useAutoRefresh({
-    intervalMs: 5 * 60 * 1000,
+    intervalMs: AUTO_REFRESH_INTERVAL_MS,
     enabled: true,
-    onRefresh: () => fetchStats(false),
+    onRefresh: () => fetchStats(false, true), // Auto-refresh triggers recalculation
   });
 
   const handleManualRefresh = useCallback(() => {
-    fetchStats(false);
+    // Manual refresh triggers full recalculation
+    fetchStats(false, true);
     resetInterval();
   }, [fetchStats, resetInterval]);
 
@@ -93,6 +117,15 @@ export default function StatsPage() {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
+    });
+  };
+
+  const formatNextRefresh = () => {
+    if (!lastRefresh) return '';
+    const nextRefresh = new Date(lastRefresh.getTime() + AUTO_REFRESH_INTERVAL_MS);
+    return nextRefresh.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
@@ -131,10 +164,19 @@ export default function StatsPage() {
                 disabled={isRefreshing}
                 className="h-9 px-4"
               >
-                <RefreshCw
-                  className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`}
-                />
-                Refresh
+                {isRecalculating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Recalculating...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw
+                      className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`}
+                    />
+                    Refresh
+                  </>
+                )}
               </Button>
             </div>
           </div>
@@ -165,7 +207,7 @@ export default function StatsPage() {
                 </p>
               </div>
               <div className="flex justify-center mt-6">
-                <Button variant="outline" size="sm" onClick={() => fetchStats(true)}>
+                <Button variant="outline" size="sm" onClick={() => fetchStats(true, false)}>
                   Try Again
                 </Button>
               </div>
@@ -187,7 +229,8 @@ export default function StatsPage() {
 
         <footer className="mt-8 text-center">
           <p className="text-xs text-slate-400">
-            Auto-refreshes every 5 minutes • Data updates in real-time
+            Auto-recalculates every 15 minutes
+            {lastRefresh && ` • Next update at ${formatNextRefresh()}`}
           </p>
         </footer>
       </div>
