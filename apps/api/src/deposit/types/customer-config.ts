@@ -67,6 +67,35 @@ const ALL_CUSTOMER_CONFIGS: CustomerVolumeConfig[] = [
     decimalStrategy: 'power',
     filters: [{ column: 'd.currency_type', operator: '=', value: 'FIAT' }],
   },
+  {
+    id: 'orocalab',
+    displayName: 'Orocalab',
+    startDate: new Date('2025-01-01'),
+    db: {
+      host: process.env.OROCALAB_DB_HOST || '',
+      port: parseInt(process.env.OROCALAB_DB_PORT || '3306', 10),
+      user: process.env.OROCALAB_DB_USER || '',
+      password: process.env.OROCALAB_DB_PASSWORD || '',
+      database: process.env.OROCALAB_DB_DATABASE || '',
+    },
+    decimalStrategy: 'fixed',
+    fixedDecimals: 2,
+    filters: [],
+  },
+  {
+    id: 'bnp',
+    displayName: 'BNP',
+    startDate: new Date('2024-01-01'),
+    db: {
+      host: process.env.BNP_DB_HOST || '',
+      port: parseInt(process.env.BNP_DB_PORT || '3306', 10),
+      user: process.env.BNP_DB_USER || '',
+      password: process.env.BNP_DB_PASSWORD || '',
+      database: process.env.BNP_DB_DATABASE || '',
+    },
+    decimalStrategy: 'power',
+    filters: [],
+  },
 ];
 
 let configsLogged = false;
