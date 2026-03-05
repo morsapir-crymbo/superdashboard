@@ -7,10 +7,10 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-slate-100">
-      <main className="mr-56 min-h-screen">
+      <Sidebar />
+      <main className="ml-56 min-h-screen">
         {children}
       </main>
-      <Sidebar />
     </div>
   );
 }

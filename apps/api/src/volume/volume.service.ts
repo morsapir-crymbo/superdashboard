@@ -171,6 +171,14 @@ export class VolumeService {
       this.getMonthToDateVolume(customerId, monthStart, today),
     ]);
 
+    // Upsert today's volume to the snapshot table on each refresh
+    try {
+      await this.repository.upsertDailyVolume(customerId, customerId, today, todayVolume);
+      this.logger.debug(`[Stats] Upserted today's volume for ${customerId}: $${todayVolume}`);
+    } catch (error) {
+      this.logger.warn(`[Stats] Failed to upsert today's volume for ${customerId}`, error);
+    }
+
     return {
       customerId,
       customerName: config.displayName,

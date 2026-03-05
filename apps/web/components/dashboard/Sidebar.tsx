@@ -28,7 +28,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="fixed right-0 top-0 h-screen w-56 bg-white border-l border-slate-200 shadow-lg flex flex-col">
+    <aside className="fixed left-0 top-0 h-screen w-56 bg-white border-r border-slate-200 shadow-lg flex flex-col">
       <div className="p-4 border-b border-slate-200">
         <h1 className="text-lg font-bold text-slate-800">SuperDashboard</h1>
       </div>
