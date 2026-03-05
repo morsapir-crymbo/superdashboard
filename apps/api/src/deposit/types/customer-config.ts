@@ -1,3 +1,5 @@
+import { CUSTOMER_CREDENTIALS, getCustomerCredentials } from '../../config/customer-credentials.config';
+
 export type DecimalStrategy = 'power' | 'fixed';
 
 export interface CustomerQueryFilter {
@@ -24,78 +26,75 @@ export interface CustomerVolumeConfig {
   filters: CustomerQueryFilter[];
 }
 
+function buildCustomerConfig(
+  id: string,
+  displayName: string,
+  startDate: Date,
+  decimalStrategy: DecimalStrategy,
+  filters: CustomerQueryFilter[],
+  fixedDecimals?: number,
+): CustomerVolumeConfig {
+  const creds = getCustomerCredentials(id);
+  return {
+    id,
+    displayName,
+    startDate,
+    db: creds ? {
+      host: creds.host,
+      port: creds.port,
+      user: creds.user,
+      password: creds.password,
+      database: creds.database,
+    } : {
+      host: '',
+      port: 3306,
+      user: '',
+      password: '',
+      database: '',
+    },
+    decimalStrategy,
+    fixedDecimals,
+    filters,
+  };
+}
+
 const ALL_CUSTOMER_CONFIGS: CustomerVolumeConfig[] = [
-  {
-    id: 'digiblox',
-    displayName: 'Digiblox',
-    startDate: new Date('2026-02-01'),
-    db: {
-      host: process.env.DIGIBLOX_DB_HOST || '',
-      port: parseInt(process.env.DIGIBLOX_DB_PORT || '3306', 10),
-      user: process.env.DIGIBLOX_DB_USER || '',
-      password: process.env.DIGIBLOX_DB_PASSWORD || '',
-      database: process.env.DIGIBLOX_DB_DATABASE || '',
-    },
-    decimalStrategy: 'power',
-    filters: [{ column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' }],
-  },
-  {
-    id: 'javashk',
-    displayName: 'Javashk',
-    startDate: new Date('2025-07-01'),
-    db: {
-      host: process.env.JAVASHK_DB_HOST || '',
-      port: parseInt(process.env.JAVASHK_DB_PORT || '3306', 10),
-      user: process.env.JAVASHK_DB_USER || '',
-      password: process.env.JAVASHK_DB_PASSWORD || '',
-      database: process.env.JAVASHK_DB_DATABASE || '',
-    },
-    decimalStrategy: 'power',
-    filters: [{ column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' }],
-  },
-  {
-    id: 'montrex',
-    displayName: 'Montrex',
-    startDate: new Date('2025-01-01'),
-    db: {
-      host: process.env.MONTREX_DB_HOST || '',
-      port: parseInt(process.env.MONTREX_DB_PORT || '3306', 10),
-      user: process.env.MONTREX_DB_USER || '',
-      password: process.env.MONTREX_DB_PASSWORD || '',
-      database: process.env.MONTREX_DB_DATABASE || '',
-    },
-    decimalStrategy: 'power',
-    filters: [{ column: 'd.currency_type', operator: '=', value: 'FIAT' }],
-  },
-  {
-    id: 'orocalab',
-    displayName: 'Orocalab',
-    startDate: new Date('2025-01-01'),
-    db: {
-      host: process.env.OROCALAB_DB_HOST || '',
-      port: parseInt(process.env.OROCALAB_DB_PORT || '3306', 10),
-      user: process.env.OROCALAB_DB_USER || '',
-      password: process.env.OROCALAB_DB_PASSWORD || '',
-      database: process.env.OROCALAB_DB_DATABASE || '',
-    },
-    decimalStrategy: 'fixed',
-    fixedDecimals: 2,
-    filters: [],
-  },
-  {
-    id: 'bnp',
-    displayName: 'BNP',
-    startDate: new Date('2024-01-01'),
-    db: {
-      host: process.env.BNP_DB_HOST || '',
-      port: parseInt(process.env.BNP_DB_PORT || '3306', 10),
-      user: process.env.BNP_DB_USER || '',
-      password: process.env.BNP_DB_PASSWORD || '',
-      database: process.env.BNP_DB_DATABASE || '',
-    },
-    decimalStrategy: 'power',
-    filters: [{ column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' }],
-  },
+  buildCustomerConfig(
+    'digiblox',
+    'Digiblox',
+    new Date('2026-02-01'),
+    'power',
+    [{ column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' }],
+  ),
+  buildCustomerConfig(
+    'javashk',
+    'Javashk',
+    new Date('2025-07-01'),
+    'power',
+    [{ column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' }],
+  ),
+  buildCustomerConfig(
+    'montrex',
+    'Montrex',
+    new Date('2025-01-01'),
+    'power',
+    [{ column: 'd.currency_type', operator: '=', value: 'FIAT' }],
+  ),
+  buildCustomerConfig(
+    'orocalab',
+    'Orocalab',
+    new Date('2025-01-01'),
+    'fixed',
+    [],
+    2,
+  ),
+  buildCustomerConfig(
+    'bnp',
+    'BNP',
+    new Date('2024-01-01'),
+    'power',
+    [{ column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' }],
+  ),
 ];
 
 let configsLogged = false;
@@ -111,9 +110,9 @@ export function getCustomerConfigs(): CustomerVolumeConfig[] {
     
     console.log('[CustomerConfig] All defined customers:', allIds.join(', '));
     console.log('[CustomerConfig] Configured customers (with DB creds):', configuredIds.join(', ') || '(none)');
+    console.log('[CustomerConfig] Credentials source: customer-credentials.config.ts (committed file)');
     if (missingIds.length > 0) {
-      console.warn('[CustomerConfig] Missing DB credentials for:', missingIds.join(', '));
-      console.warn('[CustomerConfig] Required env vars per customer: <NAME>_DB_HOST, <NAME>_DB_DATABASE, <NAME>_DB_USER, <NAME>_DB_PASSWORD');
+      console.warn('[CustomerConfig] Missing credentials for:', missingIds.join(', '));
     }
   }
   
