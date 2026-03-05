@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Query,
   Headers,
   Logger,
   HttpException,
@@ -17,14 +18,19 @@ export class CronController {
   constructor(private volumeService: VolumeService) {}
 
   @Get('snapshot')
-  async handleCronSnapshot(@Headers('authorization') authHeader?: string) {
+  async handleCronSnapshot(
+    @Headers('authorization') authHeader?: string,
+    @Headers('x-vercel-cron') vercelCronHeader?: string,
+  ) {
     this.logger.log('=== CRON SNAPSHOT TRIGGERED ===');
     this.logger.log(`Time: ${new Date().toISOString()}`);
+    this.logger.log(`Headers: auth=${authHeader ? 'present' : 'none'}, x-vercel-cron=${vercelCronHeader || 'none'}`);
     
-    const isVercelCron = process.env.VERCEL && authHeader === `Bearer ${process.env.CRON_SECRET}`;
+    const isVercelCron = vercelCronHeader === '1';
+    const hasValidSecret = process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`;
     const isDevelopment = !process.env.VERCEL;
     
-    if (!isVercelCron && !isDevelopment) {
+    if (!isVercelCron && !hasValidSecret && !isDevelopment) {
       this.logger.warn('Unauthorized cron access attempt');
       throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
     }
@@ -33,14 +39,18 @@ export class CronController {
   }
 
   @Post('snapshot')
-  async handleManualCronSnapshot(@Headers('authorization') authHeader?: string) {
+  async handleManualCronSnapshot(
+    @Headers('authorization') authHeader?: string,
+    @Headers('x-vercel-cron') vercelCronHeader?: string,
+  ) {
     this.logger.log('=== MANUAL CRON SNAPSHOT TRIGGERED ===');
     this.logger.log(`Time: ${new Date().toISOString()}`);
     
-    const isVercelCron = process.env.VERCEL && authHeader === `Bearer ${process.env.CRON_SECRET}`;
+    const isVercelCron = vercelCronHeader === '1';
+    const hasValidSecret = process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`;
     const isDevelopment = !process.env.VERCEL;
     
-    if (!isVercelCron && !isDevelopment) {
+    if (!isVercelCron && !hasValidSecret && !isDevelopment) {
       this.logger.warn('Unauthorized cron access attempt');
       throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
     }
@@ -111,5 +121,90 @@ export class CronController {
         results: { success: [], failed: ['CRITICAL_ERROR'] },
       };
     }
+  }
+
+  @Post('backfill')
+  async backfillDateRange(
+    @Query('startDate') startDateStr: string,
+    @Query('endDate') endDateStr: string,
+    @Headers('authorization') authHeader?: string,
+    @Headers('x-vercel-cron') vercelCronHeader?: string,
+  ) {
+    this.logger.log('=== BACKFILL TRIGGERED ===');
+    this.logger.log(`Range: ${startDateStr} to ${endDateStr}`);
+    
+    const isVercelCron = vercelCronHeader === '1';
+    const hasValidSecret = process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`;
+    const isDevelopment = !process.env.VERCEL;
+    
+    if (!isVercelCron && !hasValidSecret && !isDevelopment) {
+      this.logger.warn('Unauthorized backfill access attempt');
+      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+    }
+
+    if (!startDateStr || !endDateStr) {
+      throw new HttpException(
+        'startDate and endDate query parameters are required (YYYY-MM-DD)',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      throw new HttpException(
+        'Invalid date format. Use YYYY-MM-DD',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const configured = getCustomerConfigs();
+    if (configured.length === 0) {
+      return {
+        success: false,
+        message: 'No customer databases configured',
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    const results: { date: string; success: string[]; failed: string[] }[] = [];
+    const currentDate = new Date(startDate);
+
+    while (currentDate <= endDate) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+      this.logger.log(`Backfilling ${dateStr}...`);
+
+      try {
+        const result = await this.volumeService.captureSnapshotForDate(new Date(currentDate));
+        results.push({
+          date: dateStr,
+          success: result.success,
+          failed: result.failed,
+        });
+        this.logger.log(`${dateStr}: ${result.success.length} success, ${result.failed.length} failed`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`${dateStr}: FAILED - ${message}`);
+        results.push({
+          date: dateStr,
+          success: [],
+          failed: ['CRITICAL_ERROR'],
+        });
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    const totalSuccess = results.reduce((sum, r) => sum + r.success.length, 0);
+    const totalFailed = results.reduce((sum, r) => sum + r.failed.length, 0);
+
+    return {
+      success: totalFailed === 0,
+      message: `Backfill completed: ${results.length} dates, ${totalSuccess} successes, ${totalFailed} failures`,
+      timestamp: new Date().toISOString(),
+      dateRange: { start: startDateStr, end: endDateStr },
+      results,
+    };
   }
 }
