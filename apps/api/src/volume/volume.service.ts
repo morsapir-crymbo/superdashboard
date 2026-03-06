@@ -48,8 +48,17 @@ export class VolumeService {
   ) {}
 
   async getAllCustomersStats(): Promise<CustomerVolumeDetail[]> {
+    const isVercel = !!process.env.VERCEL;
     const configuredCustomerIds = this.depositRepository.getAllCustomerIds();
     this.logger.log(`Configured customers (with DB creds): ${configuredCustomerIds.length > 0 ? configuredCustomerIds.join(', ') : '(none)'}`);
+    this.logger.log(`Environment: ${isVercel ? 'Vercel (serverless)' : 'Local/Other'}`);
+    
+    // In Vercel environment, always use snapshot data to avoid timeout issues
+    // Real-time data fetching only works from environments that can reach AWS RDS
+    if (isVercel) {
+      this.logger.log('Running in Vercel - using cached snapshot data (RDS not accessible from serverless)');
+      return this.getStatsFromSnapshotOnly();
+    }
     
     if (configuredCustomerIds.length > 0) {
       try {

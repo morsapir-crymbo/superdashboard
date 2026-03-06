@@ -74,6 +74,20 @@ export class VolumeController {
   async recalculateStats() {
     this.logger.log('POST /volume/stats/recalculate - Manual recalculation requested');
     
+    const isVercel = !!process.env.VERCEL;
+    
+    // In Vercel, we cannot connect to RDS - return cached data immediately
+    if (isVercel) {
+      this.logger.log('[Recalculate] Running in Vercel - cannot connect to RDS, returning cached data');
+      const stats = await this.volumeService.getAllCustomersStats();
+      return {
+        recalculated: false,
+        reason: 'vercel_environment',
+        message: 'Real-time recalculation is not available in Vercel due to network restrictions. Data is updated via scheduled backfill from a local environment. Returning cached snapshot data.',
+        stats,
+      };
+    }
+    
     const configured = getCustomerConfigs();
     if (configured.length === 0) {
       this.logger.warn('[Recalculate] No customers configured with DB credentials - returning cached data');
