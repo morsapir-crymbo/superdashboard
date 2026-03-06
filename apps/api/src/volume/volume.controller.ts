@@ -87,8 +87,9 @@ export class VolumeController {
     }
 
     try {
-      this.logger.log(`[Recalculate] Starting recalculation for ${configured.length} customers...`);
       const today = new Date();
+      this.logger.log(`[Recalculate] Starting recalculation for ${configured.length} customers...`);
+      this.logger.log(`[Recalculate] Current time: ${today.toISOString()}, UTC date: ${today.toISOString().split('T')[0]}`);
       const result = await this.volumeService.captureSnapshotForDate(today);
       this.logger.log(`[Recalculate] Snapshot completed - Success: ${result.success.length}, Failed: ${result.failed.length}`);
       

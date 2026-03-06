@@ -253,6 +253,9 @@ export class VolumeService {
       new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
     );
     const monthStart = this.getMonthStartUTC(now);
+    
+    // Log date calculations for debugging
+    this.logger.log(`[Stats] ${customerId}: now=${now.toISOString()}, today=${today.toISOString().split('T')[0]}`);
 
     const [last30DaysMetrics, realTimeTodayMetrics, mtdMetrics] = await Promise.all([
       this.getMetricsForRange(customerId, thirtyDaysAgo, today),
@@ -500,7 +503,7 @@ export class VolumeService {
     const failed: string[] = [];
     const skipped: string[] = [];
 
-    this.logger.log(`[Snapshot] Starting capture for ${dateStr}`);
+    this.logger.log(`[Snapshot] Starting capture for ${dateStr} (input: ${date.toISOString()}, dateOnly: ${dateOnly.toISOString()})`);
     this.logger.log(`[Snapshot] Customers to process: ${customerIds.length > 0 ? customerIds.join(', ') : '(none)'}`);
 
     if (customerIds.length === 0) {

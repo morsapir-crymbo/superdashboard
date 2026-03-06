@@ -53,7 +53,17 @@ export class VolumeRepository {
     volume: number,
     depositCount: number = 0,
   ): Promise<DailyVolumeRecord> {
-    const dateOnly = new Date(date.toISOString().split('T')[0]);
+    // Ensure we're working with UTC date at midnight
+    // Use Date.UTC to avoid timezone conversion issues
+    const dateOnly = new Date(Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      0, 0, 0, 0
+    ));
+    
+    const dateStr = dateOnly.toISOString().split('T')[0];
+    console.log(`[VolumeRepository] Upserting ${customerId} for date: ${dateStr} (from input: ${date.toISOString()})`);
 
     return this.prisma.dailyEnvironmentVolume.upsert({
       where: {
@@ -134,7 +144,7 @@ export class VolumeRepository {
   }
 
   async getVolumeForDate(customerId: string, date: Date): Promise<number> {
-    const dateOnly = new Date(date.toISOString().split('T')[0]);
+    const dateOnly = this.toUTCDateOnly(date);
     
     const record = await this.prisma.dailyEnvironmentVolume.findFirst({
       where: {
@@ -147,7 +157,7 @@ export class VolumeRepository {
   }
 
   async getMetricsForDate(customerId: string, date: Date): Promise<{ volume: number; depositCount: number }> {
-    const dateOnly = new Date(date.toISOString().split('T')[0]);
+    const dateOnly = this.toUTCDateOnly(date);
     
     const record = await this.prisma.dailyEnvironmentVolume.findFirst({
       where: {
@@ -160,6 +170,15 @@ export class VolumeRepository {
       volume: record?.volume?.toNumber() || 0,
       depositCount: record?.depositCount || 0,
     };
+  }
+
+  private toUTCDateOnly(date: Date): Date {
+    return new Date(Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      0, 0, 0, 0
+    ));
   }
 
   async sumMetricsForDateRange(
