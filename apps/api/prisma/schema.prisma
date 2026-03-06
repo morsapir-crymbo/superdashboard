@@ -9,11 +9,17 @@ datasource db {
 }
 
 model Environment {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  version   String
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
+  id           Int       @id @default(autoincrement())
+  name         String    @unique
+  version      String    @default("0.0.0")
+  customerType String?   @map("customer_type")
+  status       String    @default("onboarding")
+  signedDate   DateTime? @map("signed_date") @db.Date
+  goLiveDate   DateTime? @map("go_live_date") @db.Date
+  openRequests Int       @default(0) @map("open_requests")
+  comment      String?
+  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime  @default(now())
 }
 
 model DailyEnvironmentVolume {

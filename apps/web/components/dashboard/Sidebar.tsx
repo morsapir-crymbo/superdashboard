@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, GitBranch, LogOut } from 'lucide-react';
+import { BarChart3, Users, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -12,9 +12,9 @@ const navItems = [
     icon: BarChart3,
   },
   {
-    href: '/dashboard/vertion',
-    label: 'Vertion',
-    icon: GitBranch,
+    href: '/dashboard/customers',
+    label: 'Customers',
+    icon: Users,
   },
 ];
 
