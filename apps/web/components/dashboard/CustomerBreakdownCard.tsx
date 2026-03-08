@@ -122,7 +122,7 @@ function CustomerBreakdownCardComponent({ customer }: CustomerBreakdownCardProps
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 lg:gap-6">
             <div>
               <p className="text-xs text-slate-500 uppercase tracking-wide text-right mb-1">
                 30 Days
@@ -141,6 +141,12 @@ function CustomerBreakdownCardComponent({ customer }: CustomerBreakdownCardProps
               </p>
               <MetricCell metrics={customer.summary.monthToDate} />
             </div>
+            <div>
+              <p className="text-xs text-slate-500 uppercase tracking-wide text-right mb-1">
+                Prev Month
+              </p>
+              <MetricCell metrics={customer.summary.previousMonth || { volume: 0, depositCount: 0, avgPerDeposit: 0 }} />
+            </div>
           </div>
         </div>
       </div>
@@ -158,47 +164,58 @@ function CustomerBreakdownCardComponent({ customer }: CustomerBreakdownCardProps
                 <TableRow>
                   <TableHead className="text-left">Environment</TableHead>
                   <TableHead className="text-right">30D Volume</TableHead>
-                  <TableHead className="text-right">30D Count</TableHead>
-                  <TableHead className="text-right">30D Avg</TableHead>
+                  <TableHead className="text-right">30D #</TableHead>
                   <TableHead className="text-right">Today Vol</TableHead>
-                  <TableHead className="text-right">Today Count</TableHead>
-                  <TableHead className="text-right">Today Avg</TableHead>
+                  <TableHead className="text-right">Today #</TableHead>
+                  <TableHead className="text-right">MTD Vol</TableHead>
+                  <TableHead className="text-right">MTD #</TableHead>
+                  <TableHead className="text-right">Prev Month</TableHead>
+                  <TableHead className="text-right">Prev #</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {customer.environments.map((env) => (
-                  <TableRow key={env.environmentId}>
-                    <TableCell className="font-medium text-slate-900">
-                      {env.environmentId}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      <span className={getVolumeColor(env.last30Days.volume)}>
-                        {formatFullCurrency(env.last30Days.volume)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-slate-600">
-                      {formatNumber(env.last30Days.depositCount)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-slate-600">
-                      {env.last30Days.depositCount > 0 
-                        ? formatCurrency(env.last30Days.avgPerDeposit) 
-                        : 'N/A'}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      <span className={env.today.volume > 0 ? 'text-emerald-600' : 'text-slate-400'}>
-                        {formatFullCurrency(env.today.volume)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-slate-600">
-                      {formatNumber(env.today.depositCount)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-slate-600">
-                      {env.today.depositCount > 0 
-                        ? formatCurrency(env.today.avgPerDeposit) 
-                        : 'N/A'}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {customer.environments.map((env) => {
+                  const prevMonth = env.previousMonth || { volume: 0, depositCount: 0, avgPerDeposit: 0 };
+                  return (
+                    <TableRow key={env.environmentId}>
+                      <TableCell className="font-medium text-slate-900">
+                        {env.environmentId}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        <span className={getVolumeColor(env.last30Days.volume)}>
+                          {formatFullCurrency(env.last30Days.volume)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-slate-600">
+                        {formatNumber(env.last30Days.depositCount)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        <span className={env.today.volume > 0 ? 'text-emerald-600' : 'text-slate-400'}>
+                          {formatFullCurrency(env.today.volume)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-slate-600">
+                        {formatNumber(env.today.depositCount)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        <span className={getVolumeColor(env.monthToDate.volume)}>
+                          {formatFullCurrency(env.monthToDate.volume)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-slate-600">
+                        {formatNumber(env.monthToDate.depositCount)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        <span className={getVolumeColor(prevMonth.volume)}>
+                          {formatFullCurrency(prevMonth.volume)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-slate-600">
+                        {formatNumber(prevMonth.depositCount)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState } from 'react';
-import { ChevronDown, ChevronRight, TrendingUp, DollarSign, Calendar, CalendarDays, Hash, Calculator } from 'lucide-react';
+import { ChevronDown, ChevronRight, TrendingUp, DollarSign, Calendar, CalendarDays, Hash, Calculator, CalendarCheck } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { CustomerVolumeStats, MetricSet } from '@/lib/types/stats';
@@ -106,11 +106,17 @@ function TotalVolumeSummaryComponent({ stats }: TotalVolumeSummaryProps) {
         depositCount: acc.monthToDate.depositCount + customer.summary.monthToDate.depositCount,
         avgPerDeposit: 0,
       },
+      previousMonth: {
+        volume: acc.previousMonth.volume + (customer.summary.previousMonth?.volume || 0),
+        depositCount: acc.previousMonth.depositCount + (customer.summary.previousMonth?.depositCount || 0),
+        avgPerDeposit: 0,
+      },
     }),
     {
       last30Days: { volume: 0, depositCount: 0, avgPerDeposit: 0 },
       today: { volume: 0, depositCount: 0, avgPerDeposit: 0 },
       monthToDate: { volume: 0, depositCount: 0, avgPerDeposit: 0 },
+      previousMonth: { volume: 0, depositCount: 0, avgPerDeposit: 0 },
     }
   );
 
@@ -124,6 +130,14 @@ function TotalVolumeSummaryComponent({ stats }: TotalVolumeSummaryProps) {
   totals.monthToDate.avgPerDeposit = totals.monthToDate.depositCount > 0 
     ? Math.round((totals.monthToDate.volume / totals.monthToDate.depositCount) * 100) / 100 
     : 0;
+  totals.previousMonth.avgPerDeposit = totals.previousMonth.depositCount > 0 
+    ? Math.round((totals.previousMonth.volume / totals.previousMonth.depositCount) * 100) / 100 
+    : 0;
+  
+  // Get previous month name for display
+  const prevMonth = new Date();
+  prevMonth.setMonth(prevMonth.getMonth() - 1);
+  const prevMonthName = prevMonth.toLocaleString('en-US', { month: 'short' });
 
   const activeCustomers = stats.filter(
     (c) => c.summary.last30Days.volume > 0 || c.summary.today.volume > 0
@@ -168,7 +182,7 @@ function TotalVolumeSummaryComponent({ stats }: TotalVolumeSummaryProps) {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <MetricBlock
               label="Last 30 Days"
               icon={<CalendarDays className="h-4 w-4" />}
@@ -184,6 +198,12 @@ function TotalVolumeSummaryComponent({ stats }: TotalVolumeSummaryProps) {
               label="Month to Date"
               icon={<Calendar className="h-4 w-4" />}
               metrics={totals.monthToDate}
+            />
+            <MetricBlock
+              label={`${prevMonthName} (Full Month)`}
+              icon={<CalendarCheck className="h-4 w-4" />}
+              metrics={totals.previousMonth}
+              volumeColor="text-blue-600"
             />
           </div>
 

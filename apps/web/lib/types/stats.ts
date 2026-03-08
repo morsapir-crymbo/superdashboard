@@ -9,6 +9,7 @@ export interface EnvironmentVolume {
   last30Days: MetricSet;
   today: MetricSet;
   monthToDate: MetricSet;
+  previousMonth: MetricSet;
 }
 
 export interface CustomerVolumeStats {
@@ -18,17 +19,24 @@ export interface CustomerVolumeStats {
     last30Days: MetricSet;
     today: MetricSet;
     monthToDate: MetricSet;
+    previousMonth: MetricSet;
   };
   environments: EnvironmentVolume[];
 }
 
-export type MetricType = 'last30Days' | 'today' | 'monthToDate';
+export type MetricType = 'last30Days' | 'today' | 'monthToDate' | 'previousMonth';
 
 export interface MetricConfig {
   key: MetricType;
   label: string;
   shortLabel: string;
   description: string;
+}
+
+function getPreviousMonthName(): string {
+  const now = new Date();
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return prevMonth.toLocaleString('en-US', { month: 'long' });
 }
 
 export const METRICS: MetricConfig[] = [
@@ -49,6 +57,12 @@ export const METRICS: MetricConfig[] = [
     label: 'Month to Date',
     shortLabel: 'MTD',
     description: 'Total volume from the 1st of the month until now',
+  },
+  {
+    key: 'previousMonth',
+    label: `Previous Month`,
+    shortLabel: 'Prev',
+    description: `Total volume for the previous full calendar month`,
   },
 ];
 

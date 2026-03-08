@@ -18,12 +18,14 @@ export interface CustomerVolumeDetail {
     last30Days: MetricSet;
     today: MetricSet;
     monthToDate: MetricSet;
+    previousMonth: MetricSet;
   };
   environments: {
     environmentId: string;
     last30Days: MetricSet;
     today: MetricSet;
     monthToDate: MetricSet;
+    previousMonth: MetricSet;
   }[];
 }
 
@@ -113,19 +115,26 @@ export class VolumeService {
     const todayLocal = this.formatDateLocal(now);
     const thirtyDaysAgoLocal = this.formatDateLocal(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000));
     const monthStartLocal = this.formatDateLocal(new Date(now.getFullYear(), now.getMonth(), 1));
+    
+    // Previous full month calculation
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0); // Day 0 = last day of prev month
+    const prevMonthStartLocal = this.formatDateLocal(prevMonthStart);
+    const prevMonthEndLocal = this.formatDateLocal(prevMonthEnd);
 
     this.logger.log(`[Snapshot] Date calculations (local timezone):`);
     this.logger.log(`[Snapshot]   Local time: ${now.toString()}`);
     this.logger.log(`[Snapshot]   Today: ${todayLocal}`);
     this.logger.log(`[Snapshot]   30 days ago: ${thirtyDaysAgoLocal}`);
     this.logger.log(`[Snapshot]   Month start: ${monthStartLocal}`);
+    this.logger.log(`[Snapshot]   Previous month: ${prevMonthStartLocal} to ${prevMonthEndLocal}`);
 
-    // Query using local date strings
-    const thirtyDaysAgoDate = new Date(thirtyDaysAgoLocal + 'T00:00:00Z');
+    // Query using local date strings - extend range to include previous month
+    const prevMonthStartDate = new Date(prevMonthStartLocal + 'T00:00:00Z');
     const todayDate = new Date(todayLocal + 'T00:00:00Z');
     
-    const allRecords = await this.repository.findByDateRange(thirtyDaysAgoDate, todayDate);
-    this.logger.log(`[Snapshot] Found ${allRecords.length} records for last 30 days`);
+    const allRecords = await this.repository.findByDateRange(prevMonthStartDate, todayDate);
+    this.logger.log(`[Snapshot] Found ${allRecords.length} records for extended range`);
 
     if (allRecords.length === 0) {
       this.logger.warn('[Snapshot] No snapshot data found in database');
@@ -146,6 +155,8 @@ export class VolumeService {
       let todayCount = 0;
       let mtdVolume = 0;
       let mtdCount = 0;
+      let prevMonthVolume = 0;
+      let prevMonthCount = 0;
       let hasTodayRecord = false;
 
       for (const record of customerRecords) {
@@ -153,9 +164,11 @@ export class VolumeService {
         const volume = Number(record.volume);
         const count = record.depositCount || 0;
 
-        // Sum for last 30 days
-        last30DaysVolume += volume;
-        last30DaysCount += count;
+        // Sum for last 30 days (only records within 30 days)
+        if (recordDate >= thirtyDaysAgoLocal && recordDate <= todayLocal) {
+          last30DaysVolume += volume;
+          last30DaysCount += count;
+        }
 
         // Check if this is today's record - show EXACT value from DB (no fallback)
         if (recordDate === todayLocal) {
@@ -166,9 +179,15 @@ export class VolumeService {
         }
 
         // Sum for month-to-date
-        if (recordDate >= monthStartLocal) {
+        if (recordDate >= monthStartLocal && recordDate <= todayLocal) {
           mtdVolume += volume;
           mtdCount += count;
+        }
+
+        // Sum for previous full month
+        if (recordDate >= prevMonthStartLocal && recordDate <= prevMonthEndLocal) {
+          prevMonthVolume += volume;
+          prevMonthCount += count;
         }
       }
 
@@ -191,6 +210,11 @@ export class VolumeService {
         depositCount: mtdCount,
         avgPerDeposit: calculateAvgPerDeposit(mtdVolume, mtdCount),
       };
+      const prevMonthMetrics: MetricSet = {
+        volume: Math.round(prevMonthVolume * 100) / 100,
+        depositCount: prevMonthCount,
+        avgPerDeposit: calculateAvgPerDeposit(prevMonthVolume, prevMonthCount),
+      };
 
       results.push({
         customerId,
@@ -199,6 +223,7 @@ export class VolumeService {
           last30Days: last30DaysMetrics,
           today: todayMetrics,
           monthToDate: mtdMetrics,
+          previousMonth: prevMonthMetrics,
         },
         environments: [
           {
@@ -206,6 +231,7 @@ export class VolumeService {
             last30Days: last30DaysMetrics,
             today: todayMetrics,
             monthToDate: mtdMetrics,
+            previousMonth: prevMonthMetrics,
           },
         ],
       });
@@ -243,6 +269,7 @@ export class VolumeService {
           last30Days: this.createEmptyMetricSet(),
           today: this.createEmptyMetricSet(),
           monthToDate: this.createEmptyMetricSet(),
+          previousMonth: this.createEmptyMetricSet(),
         },
         environments: [],
       };
@@ -262,13 +289,18 @@ export class VolumeService {
     const thirtyDaysAgo = new Date(this.formatDateLocal(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)) + 'T00:00:00Z');
     const monthStart = new Date(this.formatDateLocal(new Date(now.getFullYear(), now.getMonth(), 1)) + 'T00:00:00Z');
     
+    // Previous full month calculation
+    const prevMonthStart = new Date(this.formatDateLocal(new Date(now.getFullYear(), now.getMonth() - 1, 1)) + 'T00:00:00Z');
+    const prevMonthEnd = new Date(this.formatDateLocal(new Date(now.getFullYear(), now.getMonth(), 0)) + 'T00:00:00Z');
+    
     // Log date calculations for debugging
     this.logger.log(`[Stats] ${customerId}: local=${now.toString()}, today=${todayStr}`);
 
-    const [last30DaysMetrics, realTimeTodayMetrics, mtdMetrics] = await Promise.all([
+    const [last30DaysMetrics, realTimeTodayMetrics, mtdMetrics, prevMonthMetrics] = await Promise.all([
       this.getMetricsForRange(customerId, thirtyDaysAgo, today),
       this.getRealTimeMetrics(customerId, today, today),
       this.getMonthToDateMetrics(customerId, monthStart, today),
+      this.getPreviousMonthMetrics(customerId, prevMonthStart, prevMonthEnd),
     ]);
 
     // If real-time fetch returned 0 volume, try to get today's value from snapshot table
@@ -315,6 +347,7 @@ export class VolumeService {
         last30Days: last30DaysMetrics,
         today: todayMetrics,
         monthToDate: mtdMetrics,
+        previousMonth: prevMonthMetrics,
       },
       environments: [
         {
@@ -322,6 +355,7 @@ export class VolumeService {
           last30Days: last30DaysMetrics,
           today: todayMetrics,
           monthToDate: mtdMetrics,
+          previousMonth: prevMonthMetrics,
         },
       ],
     };
@@ -395,6 +429,26 @@ export class VolumeService {
       volume: totalVolume,
       depositCount: totalCount,
       avgPerDeposit: calculateAvgPerDeposit(totalVolume, totalCount),
+    };
+  }
+
+  private async getPreviousMonthMetrics(
+    customerId: string,
+    prevMonthStart: Date,
+    prevMonthEnd: Date,
+  ): Promise<MetricSet> {
+    // Previous month is fully in the past, so we can use cached data only
+    await this.ensureDataBackfilled(customerId, prevMonthStart, prevMonthEnd);
+    const cachedMetrics = await this.repository.sumMetricsForDateRange(
+      customerId,
+      prevMonthStart,
+      prevMonthEnd,
+    );
+
+    return {
+      volume: Math.round(cachedMetrics.volume * 100) / 100,
+      depositCount: cachedMetrics.depositCount,
+      avgPerDeposit: calculateAvgPerDeposit(cachedMetrics.volume, cachedMetrics.depositCount),
     };
   }
 
