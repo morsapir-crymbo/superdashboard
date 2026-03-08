@@ -108,33 +108,37 @@ export class VolumeService {
   }
 
   private async getStatsFromSnapshotOnly(): Promise<CustomerVolumeDetail[]> {
-    const now = this.getNowUTC();
-    const today = this.getDateOnlyUTC(now);
-    const thirtyDaysAgo = this.getDateOnlyUTC(
-      new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
-    );
-    const monthStart = this.getMonthStartUTC(now);
+    // Use LOCAL timezone for "today" to match volume-sync service
+    const now = new Date();
+    const todayLocal = this.formatDateLocal(now);
+    const thirtyDaysAgoLocal = this.formatDateLocal(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000));
+    const monthStartLocal = this.formatDateLocal(new Date(now.getFullYear(), now.getMonth(), 1));
 
-    const allRecords = await this.repository.findByDateRange(thirtyDaysAgo, today);
-    this.logger.log(`Found ${allRecords.length} snapshot records for last 30 days`);
+    this.logger.log(`[Snapshot] Date calculations (local timezone):`);
+    this.logger.log(`[Snapshot]   Local time: ${now.toString()}`);
+    this.logger.log(`[Snapshot]   Today: ${todayLocal}`);
+    this.logger.log(`[Snapshot]   30 days ago: ${thirtyDaysAgoLocal}`);
+    this.logger.log(`[Snapshot]   Month start: ${monthStartLocal}`);
+
+    // Query using local date strings
+    const thirtyDaysAgoDate = new Date(thirtyDaysAgoLocal + 'T00:00:00Z');
+    const todayDate = new Date(todayLocal + 'T00:00:00Z');
+    
+    const allRecords = await this.repository.findByDateRange(thirtyDaysAgoDate, todayDate);
+    this.logger.log(`[Snapshot] Found ${allRecords.length} records for last 30 days`);
 
     if (allRecords.length === 0) {
-      this.logger.warn('No snapshot data found in database');
+      this.logger.warn('[Snapshot] No snapshot data found in database');
       return [];
     }
 
     const customerIds = [...new Set(allRecords.map((r) => r.customerId))];
-    this.logger.log(`Customers with snapshot data: ${customerIds.join(', ')}`);
+    this.logger.log(`[Snapshot] Customers with data: ${customerIds.join(', ')}`);
 
     const results: CustomerVolumeDetail[] = [];
 
     for (const customerId of customerIds) {
       const customerRecords = allRecords.filter((r) => r.customerId === customerId);
-      
-      // Sort records by date descending to find the most recent non-zero value
-      const sortedRecords = [...customerRecords].sort((a, b) => 
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
       
       let last30DaysVolume = 0;
       let last30DaysCount = 0;
@@ -142,50 +146,34 @@ export class VolumeService {
       let todayCount = 0;
       let mtdVolume = 0;
       let mtdCount = 0;
-      let lastKnownDailyVolume = 0;
-      let lastKnownDailyCount = 0;
-
-      // Find the most recent non-zero daily volume (for fallback)
-      for (const record of sortedRecords) {
-        const volume = Number(record.volume);
-        if (volume > 0) {
-          lastKnownDailyVolume = volume;
-          lastKnownDailyCount = record.depositCount || 0;
-          break;
-        }
-      }
+      let hasTodayRecord = false;
 
       for (const record of customerRecords) {
         const recordDate = record.date.toISOString().split('T')[0];
-        const todayStr = today.toISOString().split('T')[0];
-        const monthStartStr = monthStart.toISOString().split('T')[0];
         const volume = Number(record.volume);
         const count = record.depositCount || 0;
 
+        // Sum for last 30 days
         last30DaysVolume += volume;
         last30DaysCount += count;
 
-        if (recordDate === todayStr) {
-          todayVolume = volume > 0 ? volume : lastKnownDailyVolume;
-          todayCount = volume > 0 ? count : lastKnownDailyCount;
-          if (volume === 0 && lastKnownDailyVolume > 0) {
-            this.logger.log(`[Snapshot] ${customerId}: Today value is 0, using last known value: $${lastKnownDailyVolume}`);
-          }
+        // Check if this is today's record - show EXACT value from DB (no fallback)
+        if (recordDate === todayLocal) {
+          todayVolume = volume;
+          todayCount = count;
+          hasTodayRecord = true;
+          this.logger.log(`[Snapshot] ${customerId}: Today (${todayLocal}) = $${volume}, ${count} deposits`);
         }
 
-        if (recordDate >= monthStartStr) {
+        // Sum for month-to-date
+        if (recordDate >= monthStartLocal) {
           mtdVolume += volume;
           mtdCount += count;
         }
       }
 
-      const hasTodayRecord = customerRecords.some(r => 
-        r.date.toISOString().split('T')[0] === today.toISOString().split('T')[0]
-      );
-      if (!hasTodayRecord && lastKnownDailyVolume > 0) {
-        todayVolume = lastKnownDailyVolume;
-        todayCount = lastKnownDailyCount;
-        this.logger.log(`[Snapshot] ${customerId}: No today record, using last known value: $${lastKnownDailyVolume}`);
+      if (!hasTodayRecord) {
+        this.logger.log(`[Snapshot] ${customerId}: No record for today (${todayLocal}) - showing $0`);
       }
 
       const last30DaysMetrics: MetricSet = {
@@ -223,8 +211,19 @@ export class VolumeService {
       });
     }
 
-    this.logger.log(`Returning stats for ${results.length} customers from snapshot data`);
+    this.logger.log(`[Snapshot] Returning stats for ${results.length} customers`);
     return results;
+  }
+
+  /**
+   * Format date as YYYY-MM-DD using LOCAL timezone (not UTC).
+   * This ensures consistency with volume-sync service.
+   */
+  private formatDateLocal(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   private createEmptyMetricSet(): MetricSet {
@@ -256,15 +255,15 @@ export class VolumeService {
       throw new Error(`Unknown customer: ${customerId}`);
     }
 
-    const now = this.getNowUTC();
-    const today = this.getDateOnlyUTC(now);
-    const thirtyDaysAgo = this.getDateOnlyUTC(
-      new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
-    );
-    const monthStart = this.getMonthStartUTC(now);
+    // Use LOCAL timezone for date calculations to match volume-sync
+    const now = new Date();
+    const todayStr = this.formatDateLocal(now);
+    const today = new Date(todayStr + 'T00:00:00Z');
+    const thirtyDaysAgo = new Date(this.formatDateLocal(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)) + 'T00:00:00Z');
+    const monthStart = new Date(this.formatDateLocal(new Date(now.getFullYear(), now.getMonth(), 1)) + 'T00:00:00Z');
     
     // Log date calculations for debugging
-    this.logger.log(`[Stats] ${customerId}: now=${now.toISOString()}, today=${today.toISOString().split('T')[0]}`);
+    this.logger.log(`[Stats] ${customerId}: local=${now.toString()}, today=${todayStr}`);
 
     const [last30DaysMetrics, realTimeTodayMetrics, mtdMetrics] = await Promise.all([
       this.getMetricsForRange(customerId, thirtyDaysAgo, today),

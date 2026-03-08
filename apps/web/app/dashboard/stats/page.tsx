@@ -9,17 +9,53 @@ import { useAutoRefresh } from '@/lib/hooks/useAutoRefresh';
 import { CustomerVolumeStats } from '@/lib/types/stats';
 
 const AUTO_REFRESH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+const VOLUME_SYNC_URL = process.env.NEXT_PUBLIC_VOLUME_SYNC_URL || 'http://localhost:3014';
 
 export default function StatsPage() {
   const [stats, setStats] = useState<CustomerVolumeStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [lastSuccessfulSync, setLastSuccessfulSync] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string>('');
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(true);
+
+  const triggerVolumeSync = useCallback(async (): Promise<{ success: boolean; timestamp?: Date }> => {
+    try {
+      console.log('[Stats] Triggering volume-sync service at', VOLUME_SYNC_URL);
+      setSyncStatus('Syncing from customer databases...');
+      
+      const response = await fetch(`${VOLUME_SYNC_URL}/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Sync failed: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log('[Stats] Sync result:', result);
+      
+      if (result.success) {
+        setSyncStatus(`Synced ${result.summary.successful}/${result.summary.total} customers`);
+        return { success: true, timestamp: new Date(result.timestamp) };
+      } else if (result.summary.successful > 0) {
+        setSyncStatus(`Partial sync: ${result.summary.successful}/${result.summary.total} customers`);
+        return { success: true, timestamp: new Date(result.timestamp) };
+      } else {
+        setSyncStatus(`Sync failed: ${result.summary.failed} errors`);
+        return { success: false };
+      }
+    } catch (err) {
+      console.warn('[Stats] Volume-sync service unavailable:', err);
+      setSyncStatus('Sync service unavailable - using cached data');
+      return { success: false };
+    }
+  }, []);
 
   const fetchStats = useCallback(async (showLoading = false, recalculate = false) => {
     if (abortControllerRef.current) {
@@ -34,30 +70,36 @@ export default function StatsPage() {
     if (recalculate) setIsRecalculating(true);
 
     try {
-      let data: CustomerVolumeStats[];
-
+      // If recalculating, first trigger the volume-sync service
+      let syncSucceeded = false;
       if (recalculate) {
-        // Use the recalculate endpoint which fetches fresh data and updates the DB
-        const response = await api.post('/volume/stats/recalculate', {}, { 
-          signal,
-          timeout: 120000, // 2 minute timeout for recalculation
-        });
-        data = response.data.stats || response.data;
-        console.log('[Stats] Recalculation result:', {
-          recalculated: response.data.recalculated,
-          snapshotResult: response.data.snapshotResult,
-        });
-      } else {
-        // Regular fetch from cache/snapshot
-        const response = await api.get('/volume/stats', { signal });
-        data = response.data;
+        const syncResult = await triggerVolumeSync();
+        syncSucceeded = syncResult.success;
+        
+        // Only update last successful sync timestamp if sync actually succeeded
+        if (syncResult.success && syncResult.timestamp) {
+          setLastSuccessfulSync(syncResult.timestamp);
+        }
       }
+
+      // Then fetch the stats from the API (which reads from the database)
+      const response = await api.get('/volume/stats', { signal });
+      const data: CustomerVolumeStats[] = response.data;
 
       if (!isMountedRef.current) return;
 
       setStats(data);
       setError('');
-      setLastRefresh(new Date());
+      
+      // If this was just a data fetch (not recalculate), update timestamp
+      if (!recalculate) {
+        setLastSuccessfulSync(new Date());
+      }
+      
+      // Clear sync status after a delay
+      setTimeout(() => {
+        if (isMountedRef.current) setSyncStatus('');
+      }, 3000);
     } catch (err: any) {
       if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') {
         return;
@@ -77,6 +119,7 @@ export default function StatsPage() {
       });
 
       setError(fullError);
+      // Do NOT update lastSuccessfulSync on error
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -84,7 +127,7 @@ export default function StatsPage() {
         setIsRecalculating(false);
       }
     }
-  }, []);
+  }, [triggerVolumeSync]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -121,8 +164,8 @@ export default function StatsPage() {
   };
 
   const formatNextRefresh = () => {
-    if (!lastRefresh) return '';
-    const nextRefresh = new Date(lastRefresh.getTime() + AUTO_REFRESH_INTERVAL_MS);
+    if (!lastSuccessfulSync) return '';
+    const nextRefresh = new Date(lastSuccessfulSync.getTime() + AUTO_REFRESH_INTERVAL_MS);
     return nextRefresh.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
@@ -149,11 +192,18 @@ export default function StatsPage() {
             </div>
 
             <div className="flex items-center gap-4">
-              {lastRefresh && (
+              {syncStatus && (
                 <div className="text-right">
-                  <p className="text-xs text-slate-400">Last updated</p>
+                  <p className="text-xs text-blue-600 font-medium animate-pulse">
+                    {syncStatus}
+                  </p>
+                </div>
+              )}
+              {lastSuccessfulSync && !syncStatus && (
+                <div className="text-right">
+                  <p className="text-xs text-slate-400">Last successful sync</p>
                   <p className="text-sm font-medium text-slate-600">
-                    {formatLastRefresh(lastRefresh)}
+                    {formatLastRefresh(lastSuccessfulSync)}
                   </p>
                 </div>
               )}
@@ -167,7 +217,7 @@ export default function StatsPage() {
                 {isRecalculating ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Recalculating...
+                    Syncing...
                   </>
                 ) : (
                   <>
@@ -229,11 +279,11 @@ export default function StatsPage() {
 
         <footer className="mt-8 text-center space-y-1">
           <p className="text-xs text-slate-400">
-            Data updates automatically every 15 minutes
-            {lastRefresh && ` • Next update at ${formatNextRefresh()}`}
+            Data syncs from customer databases every 15 minutes
+            {lastSuccessfulSync && ` • Next sync at ${formatNextRefresh()}`}
           </p>
           <p className="text-xs text-slate-400">
-            Click Refresh to get the latest data immediately
+            Click Refresh to sync latest data from all customer databases
           </p>
         </footer>
       </div>
