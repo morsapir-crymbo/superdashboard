@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState } from 'react';
-import { ChevronDown, ChevronRight, TrendingUp, DollarSign, Calendar, CalendarDays, Hash, Calculator, CalendarCheck } from 'lucide-react';
+import { ChevronDown, ChevronUp, TrendingUp, DollarSign, Calendar, CalendarDays, CalendarCheck } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { CustomerVolumeStats, MetricSet } from '@/lib/types/stats';
@@ -37,48 +37,51 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-US').format(value);
 }
 
-interface MetricBlockProps {
+interface MetricCardProps {
   label: string;
   icon: React.ReactNode;
   metrics: MetricSet;
-  volumeColor?: string;
+  accentColor?: string;
+  iconBgColor?: string;
 }
 
-function MetricBlock({ label, icon, metrics, volumeColor = 'text-slate-900' }: MetricBlockProps) {
+function MetricCard({ label, icon, metrics, accentColor = 'text-slate-900', iconBgColor = 'bg-slate-100' }: MetricCardProps) {
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 text-slate-500">
-        {icon}
-        <span className="text-xs font-medium uppercase tracking-wide">
+    <div className="bg-white rounded-xl border border-slate-200/60 p-5 hover:shadow-md hover:border-slate-300/60 transition-all duration-200">
+      {/* Header */}
+      <div className="flex items-center gap-2.5 mb-5">
+        <div className={cn('p-2 rounded-lg', iconBgColor)}>
+          {icon}
+        </div>
+        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
           {label}
         </span>
       </div>
       
-      <div className="space-y-2">
-        <div>
-          <p className={cn('text-2xl font-bold tabular-nums', volumeColor)}>
-            {formatCurrency(metrics.volume)}
-          </p>
-          <p className="text-xs text-slate-400 tabular-nums">
-            {formatFullCurrency(metrics.volume)}
-          </p>
-        </div>
-        
-        <div className="flex gap-4 text-sm">
-          <div className="flex items-center gap-1.5">
-            <Hash className="h-3.5 w-3.5 text-slate-400" />
-            <span className="text-slate-600 font-medium">
+      {/* Volume */}
+      <div className="mb-4">
+        <p className={cn('text-3xl font-bold tabular-nums tracking-tight leading-none', accentColor)}>
+          {formatCurrency(metrics.volume)}
+        </p>
+        <p className="text-[11px] text-slate-400 tabular-nums mt-1.5">
+          {formatFullCurrency(metrics.volume)}
+        </p>
+      </div>
+      
+      {/* Stats Footer */}
+      <div className="pt-4 border-t border-slate-100">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-400">Deposits</span>
+            <span className="font-semibold text-slate-700 tabular-nums text-sm">
               {formatNumber(metrics.depositCount)}
             </span>
-            <span className="text-slate-400 text-xs">deposits</span>
           </div>
-          
-          <div className="flex items-center gap-1.5">
-            <Calculator className="h-3.5 w-3.5 text-slate-400" />
-            <span className="text-slate-600 font-medium">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-400">Avg / deposit</span>
+            <span className="font-semibold text-slate-700 tabular-nums text-sm">
               {metrics.depositCount > 0 ? formatCurrency(metrics.avgPerDeposit) : 'N/A'}
             </span>
-            <span className="text-slate-400 text-xs">avg</span>
           </div>
         </div>
       </div>
@@ -120,7 +123,6 @@ function TotalVolumeSummaryComponent({ stats }: TotalVolumeSummaryProps) {
     }
   );
 
-  // Calculate averages after summing
   totals.last30Days.avgPerDeposit = totals.last30Days.depositCount > 0 
     ? Math.round((totals.last30Days.volume / totals.last30Days.depositCount) * 100) / 100 
     : 0;
@@ -134,96 +136,100 @@ function TotalVolumeSummaryComponent({ stats }: TotalVolumeSummaryProps) {
     ? Math.round((totals.previousMonth.volume / totals.previousMonth.depositCount) * 100) / 100 
     : 0;
   
-  // Get previous month name for display
   const prevMonth = new Date();
   prevMonth.setMonth(prevMonth.getMonth() - 1);
-  const prevMonthName = prevMonth.toLocaleString('en-US', { month: 'short' });
+  const prevMonthName = prevMonth.toLocaleString('en-US', { month: 'long' });
 
   const activeCustomers = stats.filter(
     (c) => c.summary.last30Days.volume > 0 || c.summary.today.volume > 0
   ).length;
 
   return (
-    <div className="space-y-4">
-      <Card
-        className={cn(
-          'overflow-hidden transition-all duration-200 cursor-pointer',
-          isExpanded && 'ring-2 ring-slate-900'
-        )}
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-slate-900 rounded-lg">
-                <TrendingUp className="h-5 w-5 text-white" />
+    <div className="space-y-8">
+      <Card className="overflow-hidden bg-gradient-to-br from-slate-50 to-white border-slate-200/60 shadow-sm">
+        <div className="p-8">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-slate-900 rounded-xl shadow-lg">
+                <TrendingUp className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">
+                <h2 className="text-2xl font-bold text-slate-900">
                   Total System Volume
                 </h2>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-slate-500 mt-1">
                   {activeCustomers} active customer{activeCustomers !== 1 ? 's' : ''}
                 </p>
               </div>
             </div>
             <button
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsExpanded(!isExpanded);
-              }}
+              className={cn(
+                'flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all',
+                isExpanded 
+                  ? 'bg-slate-900 text-white shadow-lg' 
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              )}
+              onClick={() => setIsExpanded(!isExpanded)}
             >
+              {isExpanded ? 'Hide Details' : 'View Details'}
               {isExpanded ? (
-                <ChevronDown className="h-5 w-5 text-slate-600" />
+                <ChevronUp className="h-4 w-4" />
               ) : (
-                <ChevronRight className="h-5 w-5 text-slate-600" />
+                <ChevronDown className="h-4 w-4" />
               )}
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <MetricBlock
+          {/* Metrics Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+            <MetricCard
               label="Last 30 Days"
-              icon={<CalendarDays className="h-4 w-4" />}
+              icon={<CalendarDays className="h-4 w-4 text-slate-600" />}
               metrics={totals.last30Days}
+              iconBgColor="bg-slate-100"
             />
-            <MetricBlock
+            <MetricCard
               label="Today"
-              icon={<DollarSign className="h-4 w-4" />}
+              icon={<DollarSign className="h-4 w-4 text-emerald-600" />}
               metrics={totals.today}
-              volumeColor="text-emerald-600"
+              accentColor="text-emerald-600"
+              iconBgColor="bg-emerald-50"
             />
-            <MetricBlock
+            <MetricCard
               label="Month to Date"
-              icon={<Calendar className="h-4 w-4" />}
+              icon={<Calendar className="h-4 w-4 text-slate-600" />}
               metrics={totals.monthToDate}
+              iconBgColor="bg-slate-100"
             />
-            <MetricBlock
-              label={`${prevMonthName} (Full Month)`}
-              icon={<CalendarCheck className="h-4 w-4" />}
+            <MetricCard
+              label={prevMonthName}
+              icon={<CalendarCheck className="h-4 w-4 text-blue-600" />}
               metrics={totals.previousMonth}
-              volumeColor="text-blue-600"
+              accentColor="text-blue-600"
+              iconBgColor="bg-blue-50"
             />
           </div>
 
-          <div className="mt-4 pt-4 border-t border-slate-100">
+          {/* Expand Hint */}
+          <div className="mt-6 pt-5 border-t border-slate-100">
             <p className="text-xs text-slate-400 text-center">
-              {isExpanded ? 'Click to collapse' : 'Click to see breakdown by customer'}
+              {isExpanded ? 'Showing breakdown by customer below' : 'Click "View Details" to see breakdown by customer'}
             </p>
           </div>
         </div>
       </Card>
 
+      {/* Customer Breakdown */}
       <div
         className={cn(
-          'space-y-3 transition-all duration-300',
+          'space-y-5 transition-all duration-300 ease-in-out',
           isExpanded
-            ? 'opacity-100 max-h-[4000px]'
+            ? 'opacity-100 max-h-[5000px]'
             : 'opacity-0 max-h-0 overflow-hidden'
         )}
       >
-        <h3 className="text-sm font-medium text-slate-600 px-1">
+        <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider px-1">
           Volume by Customer
         </h3>
         {stats.map((customer) => (
