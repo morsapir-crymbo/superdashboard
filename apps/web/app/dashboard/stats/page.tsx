@@ -166,16 +166,16 @@ export default function StatsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50/50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         {/* Header */}
-        <header className="mb-10">
+        <header className="mb-8 sm:mb-12">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
-            <div className="flex items-center gap-5">
-              <div className="p-4 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl shadow-lg">
-                <Activity className="h-7 w-7 text-white" />
+            <div className="flex items-center gap-4 sm:gap-5">
+              <div className="p-3 sm:p-4 bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl sm:rounded-2xl shadow-lg shrink-0">
+                <Activity className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
               </div>
-              <div>
-                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
+              <div className="min-w-0">
+                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
                   Volume Analytics
                 </h1>
                 <p className="text-sm text-slate-500 mt-1">
@@ -184,18 +184,18 @@ export default function StatsPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-5">
+            <div className="flex items-center gap-4 sm:gap-6">
               {syncStatus && (
-                <div className="text-right hidden sm:block min-w-[140px]">
-                  <p className="text-xs text-blue-600 font-medium animate-pulse">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm text-blue-600 font-medium animate-pulse">
                     {syncStatus}
                   </p>
                 </div>
               )}
               {lastSuccessfulSync && !syncStatus && (
-                <div className="text-right hidden sm:block min-w-[100px]">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium">Last sync</p>
-                  <p className="text-sm font-semibold text-slate-700 tabular-nums mt-0.5">
+                <div className="text-right hidden sm:block">
+                  <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">Last sync</p>
+                  <p className="text-base font-semibold text-slate-700 tabular-nums mt-1">
                     {formatLastRefresh(lastSuccessfulSync)}
                   </p>
                 </div>
@@ -205,17 +205,17 @@ export default function StatsPage() {
                 size="default"
                 onClick={handleManualRefresh}
                 disabled={isRefreshing}
-                className="h-11 px-6 font-medium shadow-sm hover:shadow-md transition-shadow"
+                className="h-11 sm:h-12 px-5 sm:px-6 font-semibold shadow-sm hover:shadow-md transition-all rounded-xl"
               >
                 {isRecalculating ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-2.5 animate-spin" />
                     Syncing...
                   </>
                 ) : (
                   <>
                     <RefreshCw
-                      className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`}
+                      className={`h-4 w-4 mr-2.5 ${isRefreshing ? 'animate-spin' : ''}`}
                     />
                     Refresh
                   </>
@@ -227,7 +227,7 @@ export default function StatsPage() {
           {/* Mobile sync status */}
           {syncStatus && (
             <div className="mt-4 sm:hidden">
-              <p className="text-xs text-blue-600 font-medium animate-pulse text-center">
+              <p className="text-sm text-blue-600 font-medium animate-pulse text-center">
                 {syncStatus}
               </p>
             </div>
@@ -281,17 +281,17 @@ export default function StatsPage() {
         </main>
 
         {/* Footer */}
-        <footer className="mt-12 text-center space-y-1.5">
-          <p className="text-xs text-slate-400">
+        <footer className="mt-16 text-center space-y-2">
+          <p className="text-sm text-slate-400">
             Data syncs from customer databases every 15 minutes
             {lastSuccessfulSync && (
               <>
-                <span className="mx-2 text-slate-300">•</span>
+                <span className="mx-2.5 text-slate-300">•</span>
                 <span>Next sync at {formatNextRefresh()}</span>
               </>
             )}
           </p>
-          <p className="text-[11px] text-slate-400/80">
+          <p className="text-xs text-slate-400/80">
             Click Refresh to sync latest data from all customer databases
           </p>
         </footer>
