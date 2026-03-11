@@ -22,6 +22,20 @@ model Environment {
   createdAt    DateTime  @default(now())
 }
 
+model User {
+  id         String    @id @default(cuid())
+  email      String    @unique
+  googleId   String?   @unique @map("google_id")
+  name       String?
+  picture    String?
+  role       String    @default("user")
+  lastSeenAt DateTime? @map("last_seen_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
 model DailyEnvironmentVolume {
   id            Int      @id @default(autoincrement())
   customerId    String   @map("customer_id") @db.VarChar(64)
