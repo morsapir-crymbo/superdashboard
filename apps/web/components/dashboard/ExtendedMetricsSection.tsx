@@ -9,12 +9,12 @@ import {
   ChevronRight,
   Coins,
   Banknote,
+  DollarSign,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import {
   CustomerExtendedStats,
-  ExtendedMetricSet,
   MetricType,
   formatCompactCurrency,
   formatNumber,
@@ -32,114 +32,130 @@ const PERIOD_LABELS: Record<MetricType, string> = {
   previousMonth: 'Previous Month',
 };
 
+// ═══════════════════════════════════════════════════════════
+// SUMMARY CARDS
+// ═══════════════════════════════════════════════════════════
+
 interface MetricCardProps {
   title: string;
-  subtitle?: string;
   icon: React.ReactNode;
   iconBgColor: string;
-  volume: number;
-  count: number;
-  fees: number;
-  volumeColor?: string;
+  children: React.ReactNode;
 }
 
-function MetricCard({
-  title,
-  subtitle,
-  icon,
-  iconBgColor,
-  volume,
-  count,
-  fees,
-  volumeColor = 'text-slate-900',
-}: MetricCardProps) {
-  const avgPerTxn = count > 0 ? volume / count : 0;
-
+function MetricCard({ title, icon, iconBgColor, children }: MetricCardProps) {
   return (
-    <Card className="p-6 hover:shadow-md transition-shadow">
-      {/* Header */}
+    <Card className="p-6 hover:shadow-md transition-shadow h-full">
       <div className="flex items-center gap-3 mb-6">
         <div className={cn('p-3 rounded-xl', iconBgColor)}>{icon}</div>
-        <div>
-          <h3 className="font-semibold text-slate-800 text-base">{title}</h3>
-          {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
-        </div>
+        <h3 className="font-semibold text-slate-800 text-base">{title}</h3>
       </div>
-
-      {/* Main Metrics */}
-      <div className="space-y-5">
-        {/* Volume */}
-        <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Volume</p>
-          <p className={cn('text-3xl font-bold tabular-nums', volumeColor)}>
-            {formatCompactCurrency(volume)}
-          </p>
-        </div>
-
-        {/* Count & Fees Row */}
-        <div className="grid grid-cols-2 gap-6 pt-4 border-t border-slate-100">
-          <div>
-            <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Transactions</p>
-            <p className="text-xl font-semibold tabular-nums text-slate-700">
-              {formatNumber(count)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Fees</p>
-            <p className="text-xl font-semibold tabular-nums text-amber-600">
-              {formatCompactCurrency(fees)}
-            </p>
-          </div>
-        </div>
-
-        {/* Average */}
-        {count > 0 && (
-          <div className="pt-4 border-t border-slate-100">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">Avg per transaction</span>
-              <span className="text-sm font-semibold text-slate-700 tabular-nums">
-                {formatCompactCurrency(avgPerTxn)}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
+      {children}
     </Card>
   );
 }
 
-function KytCard({ count, totalFees }: { count: number; totalFees: number }) {
+interface CryptoFiatBreakdownProps {
+  crypto: { volume: number; count: number; fees: number };
+  fiat: { volume: number; count: number; fees: number };
+  cryptoLabel?: string;
+  fiatLabel?: string;
+}
+
+function CryptoFiatBreakdown({
+  crypto,
+  fiat,
+  cryptoLabel = 'Crypto',
+  fiatLabel = 'Fiat',
+}: CryptoFiatBreakdownProps) {
+  const total = {
+    volume: crypto.volume + fiat.volume,
+    count: crypto.count + fiat.count,
+  };
+  const avgPerTxn = total.count > 0 ? total.volume / total.count : 0;
+
   return (
-    <Card className="p-6 hover:shadow-md transition-shadow">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-3 rounded-xl bg-purple-50">
-          <Shield className="h-5 w-5 text-purple-600" />
+    <div className="space-y-5">
+      {/* Total */}
+      <div className="text-center pb-4 border-b border-slate-100">
+        <p className="text-3xl font-bold tabular-nums text-slate-900">
+          {formatCompactCurrency(total.volume)}
+        </p>
+        <p className="text-sm text-slate-500 mt-1">
+          {formatNumber(total.count)} transactions
+        </p>
+      </div>
+
+      {/* Crypto Row */}
+      <div className="flex items-center justify-between py-2">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-orange-500" />
+          <span className="text-sm text-slate-600">{cryptoLabel}</span>
         </div>
-        <div>
-          <h3 className="font-semibold text-slate-800 text-base">KYT Events</h3>
-          <p className="text-xs text-slate-500">Compliance checks</p>
+        <div className="text-right">
+          <p className="text-sm font-semibold tabular-nums text-slate-800">
+            {formatCompactCurrency(crypto.volume)}
+          </p>
+          <p className="text-xs text-slate-400 tabular-nums">{formatNumber(crypto.count)} txns</p>
         </div>
       </div>
 
-      {/* Main Metric */}
+      {/* Fiat Row */}
+      <div className="flex items-center justify-between py-2">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span className="text-sm text-slate-600">{fiatLabel}</span>
+        </div>
+        <div className="text-right">
+          <p className="text-sm font-semibold tabular-nums text-slate-800">
+            {formatCompactCurrency(fiat.volume)}
+          </p>
+          <p className="text-xs text-slate-400 tabular-nums">{formatNumber(fiat.count)} txns</p>
+        </div>
+      </div>
+
+      {/* Average */}
+      {total.count > 0 && (
+        <div className="pt-4 border-t border-slate-100">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-slate-500">Avg per transaction</span>
+            <span className="text-sm font-semibold text-slate-700 tabular-nums">
+              {formatCompactCurrency(avgPerTxn)}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FeesCard({ totalFees }: { totalFees: number }) {
+  return (
+    <div className="space-y-5">
+      <div className="text-center py-6">
+        <p className="text-4xl font-bold tabular-nums text-amber-600">
+          {formatCompactCurrency(totalFees)}
+        </p>
+        <p className="text-sm text-slate-500 mt-2">Total Fees Collected</p>
+      </div>
+    </div>
+  );
+}
+
+function KytCard({ count }: { count: number }) {
+  return (
+    <div className="space-y-5">
       <div className="text-center py-6">
         <p className="text-4xl font-bold tabular-nums text-purple-600">{formatNumber(count)}</p>
-        <p className="text-sm text-slate-500 mt-2">Total Events</p>
+        <p className="text-sm text-slate-500 mt-2">Compliance Events</p>
       </div>
-
-      {/* Total Fees */}
-      <div className="pt-4 border-t border-slate-100">
-        <div className="flex justify-between items-center">
-          <span className="text-sm text-slate-500">Total Fees Collected</span>
-          <span className="text-lg font-bold text-amber-600 tabular-nums">
-            {formatCompactCurrency(totalFees)}
-          </span>
-        </div>
-      </div>
-    </Card>
+    </div>
   );
 }
+
+// ═══════════════════════════════════════════════════════════
+// CUSTOMER ROW
+// ═══════════════════════════════════════════════════════════
 
 interface CustomerRowProps {
   customer: CustomerExtendedStats;
@@ -150,29 +166,30 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
   const [expanded, setExpanded] = useState(false);
   const metrics = customer[period];
 
-  // Combine crypto deposits + transfers as "Crypto Deposits"
-  const cryptoDeposits = {
-    volume: metrics.deposits.crypto.volume + metrics.transfers.volume,
-    count: metrics.deposits.crypto.count + metrics.transfers.count,
-    fees: metrics.deposits.crypto.fees + metrics.transfers.fees,
+  // Deposits from deposits table only (NOT transfers)
+  const deposits = {
+    crypto: metrics.deposits.crypto,
+    fiat: metrics.deposits.fiat,
+    total: {
+      volume: metrics.deposits.crypto.volume + metrics.deposits.fiat.volume,
+      count: metrics.deposits.crypto.count + metrics.deposits.fiat.count,
+    },
   };
 
-  // Fiat deposits
-  const fiatDeposits = {
-    volume: metrics.deposits.fiat.volume,
-    count: metrics.deposits.fiat.count,
-    fees: metrics.deposits.fiat.fees,
-  };
-
-  // Fiat withdrawals (from withdrawals table)
-  const fiatWithdrawals = {
-    volume: metrics.withdrawals.fiat.volume,
-    count: metrics.withdrawals.fiat.count,
-    fees: metrics.withdrawals.fiat.fees,
+  // Withdrawals from withdrawals table only
+  const withdrawals = {
+    crypto: metrics.withdrawals.crypto,
+    fiat: metrics.withdrawals.fiat,
+    total: {
+      volume: metrics.withdrawals.crypto.volume + metrics.withdrawals.fiat.volume,
+      count: metrics.withdrawals.crypto.count + metrics.withdrawals.fiat.count,
+    },
   };
 
   const totalFees = metrics.fees.total;
-  const hasActivity = cryptoDeposits.count > 0 || fiatDeposits.count > 0 || fiatWithdrawals.count > 0;
+  const kytCount = metrics.kyt.count;
+
+  const hasActivity = deposits.total.count > 0 || withdrawals.total.count > 0 || kytCount > 0;
 
   return (
     <Card className={cn('overflow-hidden', !hasActivity && 'opacity-50')}>
@@ -183,7 +200,7 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
       >
         <div className="flex items-center justify-between">
           {/* Customer Info */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 min-w-[180px]">
             <button className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors">
               {expanded ? (
                 <ChevronDown className="h-5 w-5 text-slate-400" />
@@ -197,56 +214,45 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
             </div>
           </div>
 
-          {/* Metrics Summary */}
-          <div className="flex items-center gap-12">
-            {/* Crypto Deposits */}
-            <div className="text-right min-w-[120px]">
-              <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Crypto Deposits</p>
-              <p className="text-lg font-bold tabular-nums text-orange-600">
-                {formatCompactCurrency(cryptoDeposits.volume)}
-              </p>
-              <p className="text-xs text-slate-400 tabular-nums mt-0.5">
-                {formatNumber(cryptoDeposits.count)} txns
-              </p>
-            </div>
-
-            {/* Fiat Deposits */}
-            <div className="text-right min-w-[120px]">
-              <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Fiat Deposits</p>
+          {/* Metrics Summary - 4 columns */}
+          <div className="grid grid-cols-4 gap-8 flex-1 max-w-3xl">
+            {/* Deposits */}
+            <div className="text-center">
+              <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Deposits</p>
               <p className="text-lg font-bold tabular-nums text-emerald-600">
-                {formatCompactCurrency(fiatDeposits.volume)}
+                {formatCompactCurrency(deposits.total.volume)}
               </p>
-              <p className="text-xs text-slate-400 tabular-nums mt-0.5">
-                {formatNumber(fiatDeposits.count)} txns
+              <p className="text-xs text-slate-400 tabular-nums mt-1">
+                {formatNumber(deposits.total.count)} txns
               </p>
             </div>
 
-            {/* Fiat Withdrawals */}
-            <div className="text-right min-w-[120px]">
-              <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Fiat Withdrawals</p>
+            {/* Withdrawals */}
+            <div className="text-center">
+              <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Withdrawals</p>
               <p className="text-lg font-bold tabular-nums text-red-600">
-                {formatCompactCurrency(fiatWithdrawals.volume)}
+                {formatCompactCurrency(withdrawals.total.volume)}
               </p>
-              <p className="text-xs text-slate-400 tabular-nums mt-0.5">
-                {formatNumber(fiatWithdrawals.count)} txns
+              <p className="text-xs text-slate-400 tabular-nums mt-1">
+                {formatNumber(withdrawals.total.count)} txns
+              </p>
+            </div>
+
+            {/* Fees */}
+            <div className="text-center">
+              <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Fees</p>
+              <p className="text-lg font-bold tabular-nums text-amber-600">
+                {formatCompactCurrency(totalFees)}
               </p>
             </div>
 
             {/* KYT */}
-            <div className="text-right min-w-[80px]">
-              <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">KYT</p>
+            <div className="text-center">
+              <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">KYT</p>
               <p className="text-lg font-bold tabular-nums text-purple-600">
-                {formatNumber(metrics.kyt.count)}
+                {formatNumber(kytCount)}
               </p>
-              <p className="text-xs text-slate-400 mt-0.5">events</p>
-            </div>
-
-            {/* Total Fees */}
-            <div className="text-right min-w-[100px]">
-              <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Total Fees</p>
-              <p className="text-lg font-bold tabular-nums text-amber-600">
-                {formatCompactCurrency(totalFees)}
-              </p>
+              <p className="text-xs text-slate-400 mt-1">events</p>
             </div>
           </div>
         </div>
@@ -255,103 +261,87 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
       {/* Expanded Details */}
       {expanded && (
         <div className="border-t border-slate-200 bg-slate-50/70 px-6 py-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Crypto Deposits Detail */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Deposits Breakdown */}
             <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <Coins className="h-4 w-4 text-orange-500" />
-                <h5 className="text-sm font-semibold text-slate-700">Crypto Deposits</h5>
+              <div className="flex items-center gap-2 mb-5">
+                <ArrowDownToLine className="h-4 w-4 text-emerald-500" />
+                <h5 className="text-sm font-semibold text-slate-700">Deposits Breakdown</h5>
               </div>
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-500">Volume</span>
-                  <span className="text-sm font-semibold tabular-nums text-slate-800">
-                    {formatCompactCurrency(cryptoDeposits.volume)}
-                  </span>
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-2">
+                    <Coins className="h-4 w-4 text-orange-500" />
+                    <span className="text-sm text-slate-600">Crypto</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold tabular-nums">
+                      {formatCompactCurrency(deposits.crypto.volume)}
+                    </p>
+                    <p className="text-xs text-slate-400">{formatNumber(deposits.crypto.count)} txns</p>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-500">Transactions</span>
-                  <span className="text-sm font-semibold tabular-nums text-slate-800">
-                    {formatNumber(cryptoDeposits.count)}
-                  </span>
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-2">
+                    <Banknote className="h-4 w-4 text-emerald-500" />
+                    <span className="text-sm text-slate-600">Fiat</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold tabular-nums">
+                      {formatCompactCurrency(deposits.fiat.volume)}
+                    </p>
+                    <p className="text-xs text-slate-400">{formatNumber(deposits.fiat.count)} txns</p>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center pt-3 border-t border-slate-100">
-                  <span className="text-sm text-slate-500">Fees</span>
-                  <span className="text-sm font-semibold tabular-nums text-amber-600">
-                    {formatCompactCurrency(cryptoDeposits.fees)}
-                  </span>
+                <div className="pt-3 border-t border-slate-100">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-slate-500">Fees</span>
+                    <span className="text-sm font-semibold text-amber-600 tabular-nums">
+                      {formatCompactCurrency(metrics.fees.deposits)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Fiat Deposits Detail */}
+            {/* Withdrawals Breakdown */}
             <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <Banknote className="h-4 w-4 text-emerald-500" />
-                <h5 className="text-sm font-semibold text-slate-700">Fiat Deposits</h5>
-              </div>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-500">Volume</span>
-                  <span className="text-sm font-semibold tabular-nums text-slate-800">
-                    {formatCompactCurrency(fiatDeposits.volume)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-500">Transactions</span>
-                  <span className="text-sm font-semibold tabular-nums text-slate-800">
-                    {formatNumber(fiatDeposits.count)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center pt-3 border-t border-slate-100">
-                  <span className="text-sm text-slate-500">Fees</span>
-                  <span className="text-sm font-semibold tabular-nums text-amber-600">
-                    {formatCompactCurrency(fiatDeposits.fees)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Fiat Withdrawals Detail */}
-            <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-2 mb-5">
                 <ArrowUpFromLine className="h-4 w-4 text-red-500" />
-                <h5 className="text-sm font-semibold text-slate-700">Fiat Withdrawals</h5>
+                <h5 className="text-sm font-semibold text-slate-700">Withdrawals Breakdown</h5>
               </div>
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-500">Volume</span>
-                  <span className="text-sm font-semibold tabular-nums text-slate-800">
-                    {formatCompactCurrency(fiatWithdrawals.volume)}
-                  </span>
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-2">
+                    <Coins className="h-4 w-4 text-orange-500" />
+                    <span className="text-sm text-slate-600">Crypto</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold tabular-nums">
+                      {formatCompactCurrency(withdrawals.crypto.volume)}
+                    </p>
+                    <p className="text-xs text-slate-400">{formatNumber(withdrawals.crypto.count)} txns</p>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-500">Transactions</span>
-                  <span className="text-sm font-semibold tabular-nums text-slate-800">
-                    {formatNumber(fiatWithdrawals.count)}
-                  </span>
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-2">
+                    <Banknote className="h-4 w-4 text-emerald-500" />
+                    <span className="text-sm text-slate-600">Fiat</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold tabular-nums">
+                      {formatCompactCurrency(withdrawals.fiat.volume)}
+                    </p>
+                    <p className="text-xs text-slate-400">{formatNumber(withdrawals.fiat.count)} txns</p>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center pt-3 border-t border-slate-100">
-                  <span className="text-sm text-slate-500">Fees</span>
-                  <span className="text-sm font-semibold tabular-nums text-amber-600">
-                    {formatCompactCurrency(fiatWithdrawals.fees)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* KYT Detail */}
-            <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <Shield className="h-4 w-4 text-purple-500" />
-                <h5 className="text-sm font-semibold text-slate-700">KYT Events</h5>
-              </div>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-500">Total Events</span>
-                  <span className="text-sm font-semibold tabular-nums text-slate-800">
-                    {formatNumber(metrics.kyt.count)}
-                  </span>
+                <div className="pt-3 border-t border-slate-100">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-slate-500">Fees</span>
+                    <span className="text-sm font-semibold text-amber-600 tabular-nums">
+                      {formatCompactCurrency(metrics.fees.withdrawals)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -362,34 +352,41 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════
+
 function ExtendedMetricsSectionComponent({ customers, selectedPeriod }: ExtendedMetricsSectionProps) {
   // Aggregate totals across all customers
+  // NOTE: Using deposits table only (NOT transfers)
   const totals = customers.reduce(
     (acc, customer) => {
       const metrics = customer[selectedPeriod];
 
-      // Crypto deposits = deposits.crypto + transfers
-      const cryptoDeposits = {
-        volume: metrics.deposits.crypto.volume + metrics.transfers.volume,
-        count: metrics.deposits.crypto.count + metrics.transfers.count,
-        fees: metrics.deposits.crypto.fees + metrics.transfers.fees,
-      };
-
       return {
-        cryptoDeposits: {
-          volume: acc.cryptoDeposits.volume + cryptoDeposits.volume,
-          count: acc.cryptoDeposits.count + cryptoDeposits.count,
-          fees: acc.cryptoDeposits.fees + cryptoDeposits.fees,
+        deposits: {
+          crypto: {
+            volume: acc.deposits.crypto.volume + metrics.deposits.crypto.volume,
+            count: acc.deposits.crypto.count + metrics.deposits.crypto.count,
+            fees: acc.deposits.crypto.fees + metrics.deposits.crypto.fees,
+          },
+          fiat: {
+            volume: acc.deposits.fiat.volume + metrics.deposits.fiat.volume,
+            count: acc.deposits.fiat.count + metrics.deposits.fiat.count,
+            fees: acc.deposits.fiat.fees + metrics.deposits.fiat.fees,
+          },
         },
-        fiatDeposits: {
-          volume: acc.fiatDeposits.volume + metrics.deposits.fiat.volume,
-          count: acc.fiatDeposits.count + metrics.deposits.fiat.count,
-          fees: acc.fiatDeposits.fees + metrics.deposits.fiat.fees,
-        },
-        fiatWithdrawals: {
-          volume: acc.fiatWithdrawals.volume + metrics.withdrawals.fiat.volume,
-          count: acc.fiatWithdrawals.count + metrics.withdrawals.fiat.count,
-          fees: acc.fiatWithdrawals.fees + metrics.withdrawals.fiat.fees,
+        withdrawals: {
+          crypto: {
+            volume: acc.withdrawals.crypto.volume + metrics.withdrawals.crypto.volume,
+            count: acc.withdrawals.crypto.count + metrics.withdrawals.crypto.count,
+            fees: acc.withdrawals.crypto.fees + metrics.withdrawals.crypto.fees,
+          },
+          fiat: {
+            volume: acc.withdrawals.fiat.volume + metrics.withdrawals.fiat.volume,
+            count: acc.withdrawals.fiat.count + metrics.withdrawals.fiat.count,
+            fees: acc.withdrawals.fiat.fees + metrics.withdrawals.fiat.fees,
+          },
         },
         kyt: {
           count: acc.kyt.count + metrics.kyt.count,
@@ -398,9 +395,14 @@ function ExtendedMetricsSectionComponent({ customers, selectedPeriod }: Extended
       };
     },
     {
-      cryptoDeposits: { volume: 0, count: 0, fees: 0 },
-      fiatDeposits: { volume: 0, count: 0, fees: 0 },
-      fiatWithdrawals: { volume: 0, count: 0, fees: 0 },
+      deposits: {
+        crypto: { volume: 0, count: 0, fees: 0 },
+        fiat: { volume: 0, count: 0, fees: 0 },
+      },
+      withdrawals: {
+        crypto: { volume: 0, count: 0, fees: 0 },
+        fiat: { volume: 0, count: 0, fees: 0 },
+      },
       kyt: { count: 0 },
       totalFees: 0,
     }
@@ -411,45 +413,46 @@ function ExtendedMetricsSectionComponent({ customers, selectedPeriod }: Extended
       {/* Section Header */}
       <div>
         <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-6">
-          {PERIOD_LABELS[selectedPeriod]} — Detailed Metrics
+          {PERIOD_LABELS[selectedPeriod]} — Detailed Breakdown
         </h3>
 
-        {/* Summary Cards */}
+        {/* 4 Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+          {/* Deposits */}
           <MetricCard
-            title="Crypto Deposits"
-            subtitle="Blockchain transactions"
-            icon={<Coins className="h-5 w-5 text-orange-600" />}
-            iconBgColor="bg-orange-50"
-            volume={totals.cryptoDeposits.volume}
-            count={totals.cryptoDeposits.count}
-            fees={totals.cryptoDeposits.fees}
-            volumeColor="text-orange-600"
-          />
-
-          <MetricCard
-            title="Fiat Deposits"
-            subtitle="Bank transfers"
+            title="Deposits"
             icon={<ArrowDownToLine className="h-5 w-5 text-emerald-600" />}
             iconBgColor="bg-emerald-50"
-            volume={totals.fiatDeposits.volume}
-            count={totals.fiatDeposits.count}
-            fees={totals.fiatDeposits.fees}
-            volumeColor="text-emerald-600"
-          />
+          >
+            <CryptoFiatBreakdown crypto={totals.deposits.crypto} fiat={totals.deposits.fiat} />
+          </MetricCard>
 
+          {/* Withdrawals */}
           <MetricCard
-            title="Fiat Withdrawals"
-            subtitle="Bank payouts"
+            title="Withdrawals"
             icon={<ArrowUpFromLine className="h-5 w-5 text-red-600" />}
             iconBgColor="bg-red-50"
-            volume={totals.fiatWithdrawals.volume}
-            count={totals.fiatWithdrawals.count}
-            fees={totals.fiatWithdrawals.fees}
-            volumeColor="text-red-600"
-          />
+          >
+            <CryptoFiatBreakdown crypto={totals.withdrawals.crypto} fiat={totals.withdrawals.fiat} />
+          </MetricCard>
 
-          <KytCard count={totals.kyt.count} totalFees={totals.totalFees} />
+          {/* Fees */}
+          <MetricCard
+            title="Fees"
+            icon={<DollarSign className="h-5 w-5 text-amber-600" />}
+            iconBgColor="bg-amber-50"
+          >
+            <FeesCard totalFees={totals.totalFees} />
+          </MetricCard>
+
+          {/* KYT */}
+          <MetricCard
+            title="KYT"
+            icon={<Shield className="h-5 w-5 text-purple-600" />}
+            iconBgColor="bg-purple-50"
+          >
+            <KytCard count={totals.kyt.count} />
+          </MetricCard>
         </div>
       </div>
 
