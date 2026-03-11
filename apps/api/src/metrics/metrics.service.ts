@@ -105,6 +105,11 @@ export class MetricsService {
       result.transfers.count += row.transferCount;
       result.transfers.fees += row.transferFees;
 
+      // Trades
+      result.trades.volume += row.tradeVolume;
+      result.trades.count += row.tradeCount;
+      result.trades.fees += row.tradeFees;
+
       // KYT
       result.kyt.count += row.kytEventCount;
     }
@@ -151,6 +156,10 @@ export class MetricsService {
     result.transfers.avgPerTransaction = calculateAvg(result.transfers.volume, result.transfers.count);
     result.transfers.avgFeePerTransaction = calculateAvg(result.transfers.fees, result.transfers.count);
 
+    // Calculate averages for trades
+    result.trades.avgPerTransaction = calculateAvg(result.trades.volume, result.trades.count);
+    result.trades.avgFeePerTransaction = calculateAvg(result.trades.fees, result.trades.count);
+
     // Round volumes
     result.deposits.crypto.volume = Math.round(result.deposits.crypto.volume * 100) / 100;
     result.deposits.crypto.fees = Math.round(result.deposits.crypto.fees * 100) / 100;
@@ -162,12 +171,15 @@ export class MetricsService {
     result.withdrawals.fiat.fees = Math.round(result.withdrawals.fiat.fees * 100) / 100;
     result.transfers.volume = Math.round(result.transfers.volume * 100) / 100;
     result.transfers.fees = Math.round(result.transfers.fees * 100) / 100;
+    result.trades.volume = Math.round(result.trades.volume * 100) / 100;
+    result.trades.fees = Math.round(result.trades.fees * 100) / 100;
 
     // Calculate fee totals
     result.fees.deposits = Math.round((result.deposits.crypto.fees + result.deposits.fiat.fees) * 100) / 100;
     result.fees.withdrawals = Math.round((result.withdrawals.crypto.fees + result.withdrawals.fiat.fees) * 100) / 100;
     result.fees.transfers = Math.round(result.transfers.fees * 100) / 100;
-    result.fees.total = Math.round((result.fees.deposits + result.fees.withdrawals + result.fees.transfers) * 100) / 100;
+    result.fees.trades = Math.round(result.trades.fees * 100) / 100;
+    result.fees.total = Math.round((result.fees.deposits + result.fees.withdrawals + result.fees.transfers + result.fees.trades) * 100) / 100;
 
     return result;
   }

@@ -36,6 +36,9 @@ export class MetricsRepository {
       transferVolume: Number(r.transferVolume),
       transferCount: r.transferCount,
       transferFees: Number(r.transferFees),
+      tradeVolume: Number(r.tradeVolume),
+      tradeCount: r.tradeCount,
+      tradeFees: Number(r.tradeFees),
       kytEventCount: r.kytEventCount,
     }));
   }
@@ -75,6 +78,9 @@ export class MetricsRepository {
       transferVolume: Number(r.transferVolume),
       transferCount: r.transferCount,
       transferFees: Number(r.transferFees),
+      tradeVolume: Number(r.tradeVolume),
+      tradeCount: r.tradeCount,
+      tradeFees: Number(r.tradeFees),
       kytEventCount: r.kytEventCount,
     }));
   }

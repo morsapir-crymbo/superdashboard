@@ -19,6 +19,7 @@ export interface CustomerExtendedMetrics {
   deposits: CryptoFiatMetrics;
   withdrawals: CryptoFiatMetrics;
   transfers: ExtendedMetricSet;
+  trades: ExtendedMetricSet;
 
   kyt: {
     count: number;
@@ -28,6 +29,7 @@ export interface CustomerExtendedMetrics {
     deposits: number;
     withdrawals: number;
     transfers: number;
+    trades: number;
     total: number;
   };
 }
@@ -64,6 +66,10 @@ export interface DailyMetricsRow {
   transferCount: number;
   transferFees: number;
 
+  tradeVolume: number;
+  tradeCount: number;
+  tradeFees: number;
+
   kytEventCount: number;
 }
 
@@ -92,11 +98,13 @@ export function createEmptyCustomerMetrics(customerId: string, customerName: str
     deposits: createEmptyCryptoFiatMetrics(),
     withdrawals: createEmptyCryptoFiatMetrics(),
     transfers: createEmptyMetricSet(),
+    trades: createEmptyMetricSet(),
     kyt: { count: 0 },
     fees: {
       deposits: 0,
       withdrawals: 0,
       transfers: 0,
+      trades: 0,
       total: 0,
     },
   };

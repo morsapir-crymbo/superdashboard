@@ -78,6 +78,13 @@ model DailyMetrics {
   transferFees   Decimal @default(0) @map("transfer_fees") @db.Decimal(20, 2)
 
   // ═══════════════════════════════════════════════════════════
+  // TRADES
+  // ═══════════════════════════════════════════════════════════
+  tradeVolume Decimal @default(0) @map("trade_volume") @db.Decimal(20, 2)
+  tradeCount  Int     @default(0) @map("trade_count")
+  tradeFees   Decimal @default(0) @map("trade_fees") @db.Decimal(20, 2)
+
+  // ═══════════════════════════════════════════════════════════
   // KYT EVENTS
   // ═══════════════════════════════════════════════════════════
   kytEventCount Int @default(0) @map("kyt_event_count")

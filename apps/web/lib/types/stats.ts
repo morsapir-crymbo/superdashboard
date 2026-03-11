@@ -53,6 +53,7 @@ export interface CustomerExtendedMetrics {
   deposits: CryptoFiatMetrics;
   withdrawals: CryptoFiatMetrics;
   transfers: ExtendedMetricSet;
+  trades: ExtendedMetricSet;
 
   kyt: {
     count: number;
@@ -62,6 +63,7 @@ export interface CustomerExtendedMetrics {
     deposits: number;
     withdrawals: number;
     transfers: number;
+    trades: number;
     total: number;
   };
 }

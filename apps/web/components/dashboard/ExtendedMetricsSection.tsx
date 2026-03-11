@@ -10,6 +10,7 @@ import {
   Coins,
   Banknote,
   DollarSign,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -144,6 +145,48 @@ function KytCard({ count }: { count: number }) {
   );
 }
 
+interface TradesCardProps {
+  volume: number;
+  count: number;
+  fees: number;
+}
+
+function TradesCard({ volume, count, fees }: TradesCardProps) {
+  const avgPerTrade = count > 0 ? volume / count : 0;
+
+  return (
+    <div className="space-y-5">
+      {/* Total */}
+      <div className="text-center pb-4 border-b border-slate-100">
+        <p className="text-3xl font-bold tabular-nums text-blue-600">
+          {formatCompactCurrency(volume)}
+        </p>
+        <p className="text-sm text-slate-500 mt-1">{formatNumber(count)} trades</p>
+      </div>
+
+      {/* Fees */}
+      <div className="flex items-center justify-between py-2">
+        <span className="text-sm text-slate-600">Fees Collected</span>
+        <p className="text-sm font-semibold tabular-nums text-amber-600">
+          {formatCompactCurrency(fees)}
+        </p>
+      </div>
+
+      {/* Average */}
+      {count > 0 && (
+        <div className="pt-4 border-t border-slate-100">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-slate-500">Avg per trade</span>
+            <span className="text-sm font-semibold text-slate-700 tabular-nums">
+              {formatCompactCurrency(avgPerTrade)}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════
 // CUSTOMER ROW
 // ═══════════════════════════════════════════════════════════
@@ -191,10 +234,17 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
     },
   };
 
+  // TRADES
+  const trades = {
+    volume: metrics.trades.volume,
+    count: metrics.trades.count,
+    fees: metrics.trades.fees,
+  };
+
   const totalFees = metrics.fees.total;
   const kytCount = metrics.kyt.count;
 
-  const hasActivity = deposits.total.count > 0 || withdrawals.total.count > 0 || kytCount > 0;
+  const hasActivity = deposits.total.count > 0 || withdrawals.total.count > 0 || trades.count > 0 || kytCount > 0;
 
   return (
     <Card className={cn('overflow-hidden', !hasActivity && 'opacity-50')}>
@@ -219,8 +269,8 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
             </div>
           </div>
 
-          {/* Metrics Summary - 4 columns */}
-          <div className="grid grid-cols-4 gap-8 flex-1 max-w-3xl">
+          {/* Metrics Summary - 5 columns */}
+          <div className="grid grid-cols-5 gap-6 flex-1 max-w-4xl">
             {/* Deposits */}
             <div className="text-center">
               <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Deposits</p>
@@ -240,6 +290,17 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
               </p>
               <p className="text-xs text-slate-400 tabular-nums mt-1">
                 {formatNumber(withdrawals.total.count)} txns
+              </p>
+            </div>
+
+            {/* Trades */}
+            <div className="text-center">
+              <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Trades</p>
+              <p className="text-lg font-bold tabular-nums text-blue-600">
+                {formatCompactCurrency(trades.volume)}
+              </p>
+              <p className="text-xs text-slate-400 tabular-nums mt-1">
+                {formatNumber(trades.count)} trades
               </p>
             </div>
 
@@ -354,6 +415,7 @@ function ExtendedMetricsSectionComponent({ customers, selectedPeriod }: Extended
   // - Withdrawals: 
   //   - Crypto = transfers table
   //   - Fiat = withdrawals table (fiat only)
+  // - Trades: trades table (spend amount based volume)
   const totals = customers.reduce(
     (acc, customer) => {
       const metrics = customer[selectedPeriod];
@@ -381,6 +443,11 @@ function ExtendedMetricsSectionComponent({ customers, selectedPeriod }: Extended
             count: acc.withdrawals.fiat.count + metrics.withdrawals.fiat.count,
           },
         },
+        trades: {
+          volume: acc.trades.volume + metrics.trades.volume,
+          count: acc.trades.count + metrics.trades.count,
+          fees: acc.trades.fees + metrics.trades.fees,
+        },
         kyt: {
           count: acc.kyt.count + metrics.kyt.count,
         },
@@ -396,6 +463,7 @@ function ExtendedMetricsSectionComponent({ customers, selectedPeriod }: Extended
         crypto: { volume: 0, count: 0 },
         fiat: { volume: 0, count: 0 },
       },
+      trades: { volume: 0, count: 0, fees: 0 },
       kyt: { count: 0 },
       totalFees: 0,
     }
@@ -409,8 +477,8 @@ function ExtendedMetricsSectionComponent({ customers, selectedPeriod }: Extended
           {PERIOD_LABELS[selectedPeriod]} — Detailed Breakdown
         </h3>
 
-        {/* 4 Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        {/* 5 Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
           {/* Deposits */}
           <MetricCard
             title="Deposits"
@@ -427,6 +495,19 @@ function ExtendedMetricsSectionComponent({ customers, selectedPeriod }: Extended
             iconBgColor="bg-red-50"
           >
             <CryptoFiatBreakdown crypto={totals.withdrawals.crypto} fiat={totals.withdrawals.fiat} />
+          </MetricCard>
+
+          {/* Trades */}
+          <MetricCard
+            title="Trades"
+            icon={<ArrowLeftRight className="h-5 w-5 text-blue-600" />}
+            iconBgColor="bg-blue-50"
+          >
+            <TradesCard 
+              volume={totals.trades.volume} 
+              count={totals.trades.count} 
+              fees={totals.trades.fees} 
+            />
           </MetricCard>
 
           {/* Fees */}
