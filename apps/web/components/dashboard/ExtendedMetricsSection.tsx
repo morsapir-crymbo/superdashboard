@@ -56,18 +56,11 @@ function MetricCard({ title, icon, iconBgColor, children }: MetricCardProps) {
 }
 
 interface CryptoFiatBreakdownProps {
-  crypto: { volume: number; count: number; fees: number };
-  fiat: { volume: number; count: number; fees: number };
-  cryptoLabel?: string;
-  fiatLabel?: string;
+  crypto: { volume: number; count: number };
+  fiat: { volume: number; count: number };
 }
 
-function CryptoFiatBreakdown({
-  crypto,
-  fiat,
-  cryptoLabel = 'Crypto',
-  fiatLabel = 'Fiat',
-}: CryptoFiatBreakdownProps) {
+function CryptoFiatBreakdown({ crypto, fiat }: CryptoFiatBreakdownProps) {
   const total = {
     volume: crypto.volume + fiat.volume,
     count: crypto.count + fiat.count,
@@ -81,16 +74,14 @@ function CryptoFiatBreakdown({
         <p className="text-3xl font-bold tabular-nums text-slate-900">
           {formatCompactCurrency(total.volume)}
         </p>
-        <p className="text-sm text-slate-500 mt-1">
-          {formatNumber(total.count)} transactions
-        </p>
+        <p className="text-sm text-slate-500 mt-1">{formatNumber(total.count)} transactions</p>
       </div>
 
       {/* Crypto Row */}
       <div className="flex items-center justify-between py-2">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-orange-500" />
-          <span className="text-sm text-slate-600">{cryptoLabel}</span>
+          <span className="text-sm text-slate-600">Crypto</span>
         </div>
         <div className="text-right">
           <p className="text-sm font-semibold tabular-nums text-slate-800">
@@ -104,7 +95,7 @@ function CryptoFiatBreakdown({
       <div className="flex items-center justify-between py-2">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span className="text-sm text-slate-600">{fiatLabel}</span>
+          <span className="text-sm text-slate-600">Fiat</span>
         </div>
         <div className="text-right">
           <p className="text-sm font-semibold tabular-nums text-slate-800">
@@ -166,23 +157,37 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
   const [expanded, setExpanded] = useState(false);
   const metrics = customer[period];
 
-  // Deposits from deposits table only (NOT transfers)
+  // DEPOSITS: from deposits table (crypto + fiat)
   const deposits = {
-    crypto: metrics.deposits.crypto,
-    fiat: metrics.deposits.fiat,
+    crypto: {
+      volume: metrics.deposits.crypto.volume,
+      count: metrics.deposits.crypto.count,
+    },
+    fiat: {
+      volume: metrics.deposits.fiat.volume,
+      count: metrics.deposits.fiat.count,
+    },
     total: {
       volume: metrics.deposits.crypto.volume + metrics.deposits.fiat.volume,
       count: metrics.deposits.crypto.count + metrics.deposits.fiat.count,
     },
   };
 
-  // Withdrawals from withdrawals table only
+  // WITHDRAWALS:
+  // - Crypto withdrawals = transfers table
+  // - Fiat withdrawals = withdrawals table (fiat only)
   const withdrawals = {
-    crypto: metrics.withdrawals.crypto,
-    fiat: metrics.withdrawals.fiat,
+    crypto: {
+      volume: metrics.transfers.volume,
+      count: metrics.transfers.count,
+    },
+    fiat: {
+      volume: metrics.withdrawals.fiat.volume,
+      count: metrics.withdrawals.fiat.count,
+    },
     total: {
-      volume: metrics.withdrawals.crypto.volume + metrics.withdrawals.fiat.volume,
-      count: metrics.withdrawals.crypto.count + metrics.withdrawals.fiat.count,
+      volume: metrics.transfers.volume + metrics.withdrawals.fiat.volume,
+      count: metrics.transfers.count + metrics.withdrawals.fiat.count,
     },
   };
 
@@ -293,14 +298,6 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
                     <p className="text-xs text-slate-400">{formatNumber(deposits.fiat.count)} txns</p>
                   </div>
                 </div>
-                <div className="pt-3 border-t border-slate-100">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-500">Fees</span>
-                    <span className="text-sm font-semibold text-amber-600 tabular-nums">
-                      {formatCompactCurrency(metrics.fees.deposits)}
-                    </span>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -315,6 +312,7 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
                   <div className="flex items-center gap-2">
                     <Coins className="h-4 w-4 text-orange-500" />
                     <span className="text-sm text-slate-600">Crypto</span>
+                    <span className="text-xs text-slate-400">(transfers)</span>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold tabular-nums">
@@ -327,20 +325,13 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
                   <div className="flex items-center gap-2">
                     <Banknote className="h-4 w-4 text-emerald-500" />
                     <span className="text-sm text-slate-600">Fiat</span>
+                    <span className="text-xs text-slate-400">(withdrawals)</span>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold tabular-nums">
                       {formatCompactCurrency(withdrawals.fiat.volume)}
                     </p>
                     <p className="text-xs text-slate-400">{formatNumber(withdrawals.fiat.count)} txns</p>
-                  </div>
-                </div>
-                <div className="pt-3 border-t border-slate-100">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-500">Fees</span>
-                    <span className="text-sm font-semibold text-amber-600 tabular-nums">
-                      {formatCompactCurrency(metrics.fees.withdrawals)}
-                    </span>
                   </div>
                 </div>
               </div>
@@ -358,7 +349,11 @@ function CustomerRow({ customer, period }: CustomerRowProps) {
 
 function ExtendedMetricsSectionComponent({ customers, selectedPeriod }: ExtendedMetricsSectionProps) {
   // Aggregate totals across all customers
-  // NOTE: Using deposits table only (NOT transfers)
+  // CORRECT MAPPING:
+  // - Deposits: deposits table (crypto + fiat)
+  // - Withdrawals: 
+  //   - Crypto = transfers table
+  //   - Fiat = withdrawals table (fiat only)
   const totals = customers.reduce(
     (acc, customer) => {
       const metrics = customer[selectedPeriod];
@@ -368,24 +363,22 @@ function ExtendedMetricsSectionComponent({ customers, selectedPeriod }: Extended
           crypto: {
             volume: acc.deposits.crypto.volume + metrics.deposits.crypto.volume,
             count: acc.deposits.crypto.count + metrics.deposits.crypto.count,
-            fees: acc.deposits.crypto.fees + metrics.deposits.crypto.fees,
           },
           fiat: {
             volume: acc.deposits.fiat.volume + metrics.deposits.fiat.volume,
             count: acc.deposits.fiat.count + metrics.deposits.fiat.count,
-            fees: acc.deposits.fiat.fees + metrics.deposits.fiat.fees,
           },
         },
         withdrawals: {
+          // Crypto withdrawals = transfers table
           crypto: {
-            volume: acc.withdrawals.crypto.volume + metrics.withdrawals.crypto.volume,
-            count: acc.withdrawals.crypto.count + metrics.withdrawals.crypto.count,
-            fees: acc.withdrawals.crypto.fees + metrics.withdrawals.crypto.fees,
+            volume: acc.withdrawals.crypto.volume + metrics.transfers.volume,
+            count: acc.withdrawals.crypto.count + metrics.transfers.count,
           },
+          // Fiat withdrawals = withdrawals table (fiat)
           fiat: {
             volume: acc.withdrawals.fiat.volume + metrics.withdrawals.fiat.volume,
             count: acc.withdrawals.fiat.count + metrics.withdrawals.fiat.count,
-            fees: acc.withdrawals.fiat.fees + metrics.withdrawals.fiat.fees,
           },
         },
         kyt: {
@@ -396,12 +389,12 @@ function ExtendedMetricsSectionComponent({ customers, selectedPeriod }: Extended
     },
     {
       deposits: {
-        crypto: { volume: 0, count: 0, fees: 0 },
-        fiat: { volume: 0, count: 0, fees: 0 },
+        crypto: { volume: 0, count: 0 },
+        fiat: { volume: 0, count: 0 },
       },
       withdrawals: {
-        crypto: { volume: 0, count: 0, fees: 0 },
-        fiat: { volume: 0, count: 0, fees: 0 },
+        crypto: { volume: 0, count: 0 },
+        fiat: { volume: 0, count: 0 },
       },
       kyt: { count: 0 },
       totalFees: 0,
