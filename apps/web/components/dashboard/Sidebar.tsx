@@ -2,13 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Users, LogOut } from 'lucide-react';
+import { Activity, BarChart3, Users, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   {
-    href: '/dashboard/stats',
-    label: 'Stats',
+    href: '/dashboard/volume',
+    label: 'Volume',
+    icon: Activity,
+  },
+  {
+    href: '/dashboard/metrics',
+    label: 'Metrics',
     icon: BarChart3,
   },
   {

@@ -116,7 +116,8 @@ function LoginInner() {
             </div>
           )}
 
-          <Button
+          {/* Google login temporarily disabled - keeping code for future use */}
+          {/* <Button
             variant="outline"
             className="w-full cursor-pointer gap-2 h-11"
             onClick={handleGoogleLogin}
@@ -133,7 +134,7 @@ function LoginInner() {
             <div className="relative flex justify-center text-xs uppercase">
               <span className="bg-white px-2 text-muted-foreground">Or continue with</span>
             </div>
-          </div>
+          </div> */}
 
           <form onSubmit={handleCredentialLogin} className="grid gap-4">
             <div className="grid gap-2">
