@@ -58,34 +58,43 @@ function buildCustomerConfig(
   };
 }
 
+/**
+ * Customer configurations.
+ * 
+ * BASE FILTERS (applied to ALL customers automatically in deposit-query.builder.ts):
+ * - d.to_address <> 'INTERNAL_TRANSFER'
+ * - d.status IN ('CONFIRMED', 'COMPLETED')
+ * 
+ * Customer-specific filters below are ADDITIONAL filters on top of base filters.
+ */
 const ALL_CUSTOMER_CONFIGS: CustomerVolumeConfig[] = [
   buildCustomerConfig(
     'digiblox',
     'Digiblox',
     new Date('2026-02-01'),
     'power',
-    [{ column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' }],
+    [], // Base filters apply automatically
   ),
   buildCustomerConfig(
     'javashk',
     'Javashk',
     new Date('2025-07-01'),
     'power',
-    [{ column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' }],
+    [], // Base filters apply automatically
   ),
   buildCustomerConfig(
     'montrex',
     'Montrex',
     new Date('2025-01-01'),
     'power',
-    [{ column: 'd.currency_type', operator: '=', value: 'FIAT' }],
+    [{ column: 'd.currency_type', operator: '=', value: 'FIAT' }], // Additional: FIAT only
   ),
   buildCustomerConfig(
     'orocalab',
     'Orocalab',
     new Date('2025-01-01'),
     'fixed',
-    [],
+    [], // Base filters apply automatically
     2,
   ),
   buildCustomerConfig(
@@ -93,7 +102,7 @@ const ALL_CUSTOMER_CONFIGS: CustomerVolumeConfig[] = [
     'BNP',
     new Date('2024-01-01'),
     'power',
-    [{ column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' }],
+    [], // Base filters apply automatically
   ),
 ];
 

@@ -36,3 +36,59 @@ model DailyEnvironmentVolume {
   @@index([customerId, date])
   @@map("daily_environment_volume")
 }
+
+model DailyMetrics {
+  id            Int      @id @default(autoincrement())
+  customerId    String   @map("customer_id") @db.VarChar(64)
+  date          DateTime @db.Date
+
+  // ═══════════════════════════════════════════════════════════
+  // DEPOSITS - CRYPTO
+  // ═══════════════════════════════════════════════════════════
+  cryptoDepositVolume Decimal @default(0) @map("crypto_deposit_volume") @db.Decimal(20, 2)
+  cryptoDepositCount  Int     @default(0) @map("crypto_deposit_count")
+  cryptoDepositFees   Decimal @default(0) @map("crypto_deposit_fees") @db.Decimal(20, 2)
+
+  // ═══════════════════════════════════════════════════════════
+  // DEPOSITS - FIAT
+  // ═══════════════════════════════════════════════════════════
+  fiatDepositVolume Decimal @default(0) @map("fiat_deposit_volume") @db.Decimal(20, 2)
+  fiatDepositCount  Int     @default(0) @map("fiat_deposit_count")
+  fiatDepositFees   Decimal @default(0) @map("fiat_deposit_fees") @db.Decimal(20, 2)
+
+  // ═══════════════════════════════════════════════════════════
+  // WITHDRAWALS - CRYPTO
+  // ═══════════════════════════════════════════════════════════
+  cryptoWithdrawalVolume Decimal @default(0) @map("crypto_withdrawal_volume") @db.Decimal(20, 2)
+  cryptoWithdrawalCount  Int     @default(0) @map("crypto_withdrawal_count")
+  cryptoWithdrawalFees   Decimal @default(0) @map("crypto_withdrawal_fees") @db.Decimal(20, 2)
+
+  // ═══════════════════════════════════════════════════════════
+  // WITHDRAWALS - FIAT
+  // ═══════════════════════════════════════════════════════════
+  fiatWithdrawalVolume Decimal @default(0) @map("fiat_withdrawal_volume") @db.Decimal(20, 2)
+  fiatWithdrawalCount  Int     @default(0) @map("fiat_withdrawal_count")
+  fiatWithdrawalFees   Decimal @default(0) @map("fiat_withdrawal_fees") @db.Decimal(20, 2)
+
+  // ═══════════════════════════════════════════════════════════
+  // TRANSFERS (tracked separately, not counted as volume)
+  // ═══════════════════════════════════════════════════════════
+  transferVolume Decimal @default(0) @map("transfer_volume") @db.Decimal(20, 2)
+  transferCount  Int     @default(0) @map("transfer_count")
+  transferFees   Decimal @default(0) @map("transfer_fees") @db.Decimal(20, 2)
+
+  // ═══════════════════════════════════════════════════════════
+  // KYT EVENTS
+  // ═══════════════════════════════════════════════════════════
+  kytEventCount Int @default(0) @map("kyt_event_count")
+
+  // ═══════════════════════════════════════════════════════════
+  // METADATA
+  // ═══════════════════════════════════════════════════════════
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([customerId, date])
+  @@index([customerId, date])
+  @@map("daily_metrics")
+}

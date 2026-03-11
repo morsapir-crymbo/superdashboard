@@ -7,6 +7,7 @@ import { CronModule } from './cron/cron.module';
 import { HealthModule } from './health/health.module';
 import { SharedModule } from './shared/shared.module';
 import { DepositModule } from './deposit/deposit.module';
+import { MetricsModule } from './metrics/metrics.module';
 import { PrismaService } from './prisma.service';
 
 @Module({
@@ -19,6 +20,7 @@ import { PrismaService } from './prisma.service';
     SnapshotModule,
     CronModule,
     HealthModule,
+    MetricsModule,
   ],
   providers: [PrismaService],
 })

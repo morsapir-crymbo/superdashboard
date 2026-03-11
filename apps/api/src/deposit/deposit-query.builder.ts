@@ -5,6 +5,18 @@ export interface BuiltQuery {
   params: (string | number)[];
 }
 
+/**
+ * BASE FILTERS applied to ALL deposit queries:
+ * 1. to_address <> 'INTERNAL_TRANSFER' - Exclude internal transfers
+ * 2. status IN ('CONFIRMED', 'COMPLETED') - Only count confirmed/completed deposits
+ * 
+ * These are combined with customer-specific filters from config.
+ */
+const BASE_FILTERS: CustomerQueryFilter[] = [
+  { column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' },
+  { column: 'd.status', operator: 'IN', value: ['CONFIRMED', 'COMPLETED'] },
+];
+
 export class DepositQueryBuilder {
   private config: CustomerVolumeConfig;
 
@@ -61,13 +73,16 @@ export class DepositQueryBuilder {
   }
 
   private buildFilterClauses(params: (string | number)[]): string {
-    if (this.config.filters.length === 0) {
+    // Combine base filters with customer-specific filters
+    const allFilters = [...BASE_FILTERS, ...this.config.filters];
+    
+    if (allFilters.length === 0) {
       return '';
     }
 
     const clauses: string[] = [];
 
-    for (const filter of this.config.filters) {
+    for (const filter of allFilters) {
       const clause = this.buildSingleFilter(filter, params);
       if (clause) {
         clauses.push(clause);

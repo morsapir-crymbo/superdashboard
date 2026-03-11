@@ -1,24 +1,40 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { RefreshCw, Activity, Loader2 } from 'lucide-react';
+import { RefreshCw, Activity, Loader2, BarChart3 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { TotalVolumeSummary } from '@/components/dashboard/TotalVolumeSummary';
+import { ExtendedMetricsSection } from '@/components/dashboard/ExtendedMetricsSection';
 import { useAutoRefresh } from '@/lib/hooks/useAutoRefresh';
-import { CustomerVolumeStats } from '@/lib/types/stats';
+import {
+  CustomerVolumeStats,
+  CustomerExtendedStats,
+  ExtendedMetricsResponse,
+  MetricType,
+} from '@/lib/types/stats';
+import { cn } from '@/lib/utils';
 
 const AUTO_REFRESH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const VOLUME_SYNC_URL = process.env.NEXT_PUBLIC_VOLUME_SYNC_URL || 'http://localhost:3014';
 
+const TIME_PERIODS: { key: MetricType; label: string }[] = [
+  { key: 'last30Days', label: '30 Days' },
+  { key: 'today', label: 'Today' },
+  { key: 'monthToDate', label: 'MTD' },
+  { key: 'previousMonth', label: 'Prev Month' },
+];
+
 export default function StatsPage() {
   const [stats, setStats] = useState<CustomerVolumeStats[]>([]);
+  const [extendedStats, setExtendedStats] = useState<CustomerExtendedStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastSuccessfulSync, setLastSuccessfulSync] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>('');
+  const [selectedPeriod, setSelectedPeriod] = useState<MetricType>('last30Days');
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(true);
@@ -27,27 +43,27 @@ export default function StatsPage() {
     try {
       console.log('[Stats] Triggering volume-sync service at', VOLUME_SYNC_URL);
       setSyncStatus('Syncing from customer databases...');
-      
+
       const response = await fetch(`${VOLUME_SYNC_URL}/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
-      
+
       if (!response.ok) {
         throw new Error(`Sync failed: ${response.status}`);
       }
-      
+
       const result = await response.json();
       console.log('[Stats] Sync result:', result);
-      
+
       if (result.success) {
         setSyncStatus(`Synced ${result.summary.successful}/${result.summary.total} customers`);
         return { success: true, timestamp: new Date(result.timestamp) };
-      } else if (result.summary.successful > 0) {
+      } else if (result.summary?.successful > 0) {
         setSyncStatus(`Partial sync: ${result.summary.successful}/${result.summary.total} customers`);
         return { success: true, timestamp: new Date(result.timestamp) };
       } else {
-        setSyncStatus(`Sync failed: ${result.summary.failed} errors`);
+        setSyncStatus(`Sync failed: ${result.summary?.failed || 0} errors`);
         return { success: false };
       }
     } catch (err) {
@@ -57,71 +73,82 @@ export default function StatsPage() {
     }
   }, []);
 
-  const fetchStats = useCallback(async (showLoading = false, recalculate = false) => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+  const fetchStats = useCallback(
+    async (showLoading = false, recalculate = false) => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
 
-    abortControllerRef.current = new AbortController();
-    const signal = abortControllerRef.current.signal;
+      abortControllerRef.current = new AbortController();
+      const signal = abortControllerRef.current.signal;
 
-    if (showLoading) setLoading(true);
-    setIsRefreshing(true);
-    if (recalculate) setIsRecalculating(true);
+      if (showLoading) setLoading(true);
+      setIsRefreshing(true);
+      if (recalculate) setIsRecalculating(true);
 
-    try {
-      let syncSucceeded = false;
-      if (recalculate) {
-        const syncResult = await triggerVolumeSync();
-        syncSucceeded = syncResult.success;
-        
-        if (syncResult.success && syncResult.timestamp) {
-          setLastSuccessfulSync(syncResult.timestamp);
+      try {
+        if (recalculate) {
+          const syncResult = await triggerVolumeSync();
+
+          if (syncResult.success && syncResult.timestamp) {
+            setLastSuccessfulSync(syncResult.timestamp);
+          }
+        }
+
+        // Fetch both volume stats and extended metrics in parallel
+        const [volumeResponse, extendedResponse] = await Promise.all([
+          api.get('/volume/stats', { signal }),
+          api.get('/metrics/extended', { signal }).catch((e) => {
+            console.warn('[Stats] Extended metrics not available:', e.message);
+            return { data: { customers: [] } };
+          }),
+        ]);
+
+        if (!isMountedRef.current) return;
+
+        const volumeData: CustomerVolumeStats[] = volumeResponse.data;
+        const extendedData: ExtendedMetricsResponse = extendedResponse.data;
+
+        setStats(volumeData);
+        setExtendedStats(extendedData.customers || []);
+        setError('');
+
+        if (!recalculate) {
+          setLastSuccessfulSync(new Date());
+        }
+
+        setTimeout(() => {
+          if (isMountedRef.current) setSyncStatus('');
+        }, 3000);
+      } catch (err: any) {
+        if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') {
+          return;
+        }
+
+        if (!isMountedRef.current) return;
+
+        const errorMessage =
+          err?.response?.data?.message || err?.message || 'Failed to load volume stats';
+        const statusCode = err?.response?.status;
+        const fullError = statusCode ? `[${statusCode}] ${errorMessage}` : errorMessage;
+
+        console.error('Stats API error:', {
+          status: statusCode,
+          message: errorMessage,
+          data: err?.response?.data,
+        });
+
+        setError(fullError);
+      } finally {
+        if (isMountedRef.current) {
+          setLoading(false);
+          setIsRefreshing(false);
+          setIsRecalculating(false);
         }
       }
-
-      const response = await api.get('/volume/stats', { signal });
-      const data: CustomerVolumeStats[] = response.data;
-
-      if (!isMountedRef.current) return;
-
-      setStats(data);
-      setError('');
-      
-      if (!recalculate) {
-        setLastSuccessfulSync(new Date());
-      }
-      
-      setTimeout(() => {
-        if (isMountedRef.current) setSyncStatus('');
-      }, 3000);
-    } catch (err: any) {
-      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') {
-        return;
-      }
-
-      if (!isMountedRef.current) return;
-
-      const errorMessage =
-        err?.response?.data?.message || err?.message || 'Failed to load volume stats';
-      const statusCode = err?.response?.status;
-      const fullError = statusCode ? `[${statusCode}] ${errorMessage}` : errorMessage;
-
-      console.error('Stats API error:', {
-        status: statusCode,
-        message: errorMessage,
-        data: err?.response?.data,
-      });
-
-      setError(fullError);
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-        setIsRefreshing(false);
-        setIsRecalculating(false);
-      }
-    }
-  }, [triggerVolumeSync]);
+    },
+    [triggerVolumeSync]
+  );
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -176,10 +203,10 @@ export default function StatsPage() {
               </div>
               <div className="min-w-0">
                 <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-                  Volume Analytics
+                  Analytics Dashboard
                 </h1>
                 <p className="text-sm text-slate-500 mt-1">
-                  Real-time transaction volume monitoring
+                  Comprehensive transaction monitoring
                 </p>
               </div>
             </div>
@@ -187,14 +214,14 @@ export default function StatsPage() {
             <div className="flex items-center gap-4 sm:gap-6">
               {syncStatus && (
                 <div className="text-right hidden sm:block">
-                  <p className="text-sm text-blue-600 font-medium animate-pulse">
-                    {syncStatus}
-                  </p>
+                  <p className="text-sm text-blue-600 font-medium animate-pulse">{syncStatus}</p>
                 </div>
               )}
               {lastSuccessfulSync && !syncStatus && (
                 <div className="text-right hidden sm:block">
-                  <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">Last sync</p>
+                  <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">
+                    Last sync
+                  </p>
                   <p className="text-base font-semibold text-slate-700 tabular-nums mt-1">
                     {formatLastRefresh(lastSuccessfulSync)}
                   </p>
@@ -214,16 +241,14 @@ export default function StatsPage() {
                   </>
                 ) : (
                   <>
-                    <RefreshCw
-                      className={`h-4 w-4 mr-2.5 ${isRefreshing ? 'animate-spin' : ''}`}
-                    />
+                    <RefreshCw className={`h-4 w-4 mr-2.5 ${isRefreshing ? 'animate-spin' : ''}`} />
                     Refresh
                   </>
                 )}
               </Button>
             </div>
           </div>
-          
+
           {/* Mobile sync status */}
           {syncStatus && (
             <div className="mt-4 sm:hidden">
@@ -235,7 +260,7 @@ export default function StatsPage() {
         </header>
 
         {/* Main Content */}
-        <main>
+        <main className="space-y-12">
           {loading ? (
             <div className="flex items-center justify-center py-32">
               <div className="text-center">
@@ -243,7 +268,7 @@ export default function StatsPage() {
                   <div className="w-16 h-16 border-4 border-slate-200 rounded-full" />
                   <div className="absolute top-0 left-0 w-16 h-16 border-4 border-slate-900 rounded-full border-t-transparent animate-spin" />
                 </div>
-                <p className="text-sm text-slate-500 mt-6">Loading volume data...</p>
+                <p className="text-sm text-slate-500 mt-6">Loading analytics data...</p>
               </div>
             </div>
           ) : error ? (
@@ -252,9 +277,7 @@ export default function StatsPage() {
                 <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <span className="text-2xl">⚠️</span>
                 </div>
-                <p className="text-red-700 font-semibold text-lg mb-2">
-                  Failed to load stats
-                </p>
+                <p className="text-red-700 font-semibold text-lg mb-2">Failed to load stats</p>
                 <p className="text-red-600 text-sm font-mono bg-red-100 rounded-lg px-4 py-2 inline-block max-w-full break-words">
                   {error}
                 </p>
@@ -276,7 +299,57 @@ export default function StatsPage() {
               </p>
             </div>
           ) : (
-            <TotalVolumeSummary stats={stats} />
+            <>
+              {/* Section 1: Volume Summary (existing, at the top) */}
+              <section>
+                <TotalVolumeSummary stats={stats} />
+              </section>
+
+              {/* Divider */}
+              <div className="border-t border-slate-200" />
+
+              {/* Section 2: Extended Metrics */}
+              {extendedStats.length > 0 && (
+                <section>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-indigo-100 rounded-xl">
+                        <BarChart3 className="h-5 w-5 text-indigo-600" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-900">Detailed Metrics</h2>
+                        <p className="text-sm text-slate-500">
+                          Deposits, Withdrawals, Transfers & KYT
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Time Period Selector */}
+                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                      {TIME_PERIODS.map((period) => (
+                        <button
+                          key={period.key}
+                          onClick={() => setSelectedPeriod(period.key)}
+                          className={cn(
+                            'px-4 py-2 text-sm font-medium rounded-lg transition-all',
+                            selectedPeriod === period.key
+                              ? 'bg-white text-slate-900 shadow-sm'
+                              : 'text-slate-600 hover:text-slate-900'
+                          )}
+                        >
+                          {period.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <ExtendedMetricsSection
+                    customers={extendedStats}
+                    selectedPeriod={selectedPeriod}
+                  />
+                </section>
+              )}
+            </>
           )}
         </main>
 
