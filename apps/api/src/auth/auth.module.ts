@@ -4,18 +4,26 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtGuard } from './jwt.guard';
 import { GoogleOAuthService } from './google-oauth.service';
+import { PrismaService } from '../prisma.service';
+
+// Fallback so login does not crash when JWT_SECRET is missing (e.g. env not set in Vercel)
+const JWT_SECRET = process.env.JWT_SECRET || 'superdashboard-fallback-secret-change-in-production';
+if (!process.env.JWT_SECRET) {
+  console.warn('[Auth] JWT_SECRET is not set - using fallback. Set JWT_SECRET in production.');
+}
 
 @Global()
 @Module({
   imports: [
     JwtModule.register({
-      secret: process.env.JWT_SECRET,
+      secret: JWT_SECRET,
       signOptions: { expiresIn: '30d' },
     }),
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
+    PrismaService,
     JwtGuard,
     {
       provide: GoogleOAuthService,

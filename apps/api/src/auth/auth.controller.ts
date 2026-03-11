@@ -25,15 +25,33 @@ export class AuthController {
 
   @Post('login')
   async login(@Body() body: any, @Res({ passthrough: true }) res: Response) {
-    const { username, password } = body;
-    await this.auth.validate(username, password);
-    const token = this.auth.issueToken(username);
-    res.cookie('token', token, {
-      httpOnly: true,
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      secure: process.env.NODE_ENV === 'production',
-    });
-    return { ok: true, token };
+    try {
+      // Support both JSON and application/x-www-form-urlencoded
+      const username = typeof body?.username === 'string' ? body.username : '';
+      const password = typeof body?.password === 'string' ? body.password : '';
+
+      if (!username || !password) {
+        res.status(400).json({ message: 'Username and password are required' });
+        return;
+      }
+
+      await this.auth.validate(username, password);
+      const token = this.auth.issueToken(username);
+      res.cookie('token', token, {
+        httpOnly: true,
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        secure: process.env.NODE_ENV === 'production',
+      });
+      return { ok: true, token };
+    } catch (err: any) {
+      const status = err?.status ?? err?.statusCode ?? err?.response?.statusCode;
+      if (status === 401) {
+        res.status(401).json({ message: err?.message || 'Invalid credentials' });
+        return;
+      }
+      this.logger.error('Login error', err?.stack || err);
+      res.status(500).json({ message: 'Login failed. Please try again.' });
+    }
   }
 
   @Get('google')
