@@ -76,18 +76,11 @@ const ALL_CUSTOMER_CONFIGS: CustomerVolumeConfig[] = [
     [], // Base filters apply automatically
   ),
   buildCustomerConfig(
-    'javashk',
-    'Javashk',
-    new Date('2025-07-01'),
-    'power',
-    [], // Base filters apply automatically
-  ),
-  buildCustomerConfig(
-    'montrex',
-    'Montrex',
+    'coincashy',
+    'Coincashy',
     new Date('2025-01-01'),
     'power',
-    [{ column: 'd.currency_type', operator: '=', value: 'FIAT' }], // Additional: FIAT only
+    [], // Base filters apply automatically
   ),
   buildCustomerConfig(
     'orocalab',
@@ -101,6 +94,13 @@ const ALL_CUSTOMER_CONFIGS: CustomerVolumeConfig[] = [
     'bnp',
     'BNP',
     new Date('2024-01-01'),
+    'power',
+    [], // Base filters apply automatically
+  ),
+  buildCustomerConfig(
+    'javashk',
+    'Javashk',
+    new Date('2025-07-01'),
     'power',
     [], // Base filters apply automatically
   ),

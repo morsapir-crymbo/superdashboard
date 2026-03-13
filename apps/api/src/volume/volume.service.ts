@@ -31,8 +31,8 @@ export interface CustomerVolumeDetail {
 
 const CUSTOMER_DISPLAY_NAMES: Record<string, string> = {
   digiblox: 'Digiblox',
+  coincashy: 'Coincashy',
   javashk: 'Javashk',
-  montrex: 'Montrex',
   orocalab: 'Orocalab',
   bnp: 'BNP',
 };
@@ -64,7 +64,11 @@ export class VolumeService {
     
     if (configuredCustomerIds.length > 0) {
       try {
-        return await this.getStatsWithRealTimeData(configuredCustomerIds);
+        const realTimeResults = await this.getStatsWithRealTimeData(configuredCustomerIds);
+        const snapshotResults = await this.getStatsFromSnapshotOnly();
+        const existing = new Set(realTimeResults.map((r) => r.customerId));
+        const missingFromRealtime = snapshotResults.filter((r) => !existing.has(r.customerId));
+        return [...realTimeResults, ...missingFromRealtime];
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.warn(`Failed to get real-time data: ${message}`);

@@ -113,3 +113,57 @@ model DailyMetrics {
   @@index([customerId, date])
   @@map("daily_metrics")
 }
+
+/// Checkpoints for incremental API sync (per customer, per environment, per source).
+/// Only updated after a batch is successfully processed and written to daily_metrics.
+model SyncCheckpoint {
+  id             Int      @id @default(autoincrement())
+  customerId     String   @map("customer_id") @db.VarChar(64)
+  environmentId  String   @map("environment_id") @db.VarChar(64)
+  source         String   @db.VarChar(32) // deposits | transfers | withdrawals | trades
+  lastId         BigInt   @map("last_id")
+  lastUpdatedAt  DateTime? @map("last_updated_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([customerId, environmentId, source])
+  @@index([customerId, environmentId])
+  @@map("sync_checkpoints")
+}
+
+/// Marks that a customer/environment has completed the DB bootstrap
+/// and is allowed to switch to API-only incremental sync.
+model SyncBootstrapState {
+  id            Int      @id @default(autoincrement())
+  customerId    String   @map("customer_id") @db.VarChar(64)
+  environmentId String   @map("environment_id") @db.VarChar(64)
+  method        String   @default("db-bootstrap") @db.VarChar(32)
+  completedAt   DateTime @default(now()) @map("completed_at")
+
+  @@unique([customerId, environmentId])
+  @@map("sync_bootstrap_state")
+}
+
+/// Post-bootstrap source records tracked for incremental reconciliation.
+/// Unique by customer/environment/source/source_id so updated rows can be
+/// compared against their previous stored state without double counting.
+model SyncSourceRecord {
+  id              Int      @id @default(autoincrement())
+  customerId      String   @map("customer_id") @db.VarChar(64)
+  environmentId   String   @map("environment_id") @db.VarChar(64)
+  source          String   @db.VarChar(32)
+  sourceKey       String   @map("source_key") @db.VarChar(255)
+  eventDate       DateTime @map("event_date") @db.Date
+  sourceUpdatedAt DateTime? @map("source_updated_at")
+  status          String?  @db.VarChar(64)
+  isIncluded      Boolean  @default(false) @map("is_included")
+  isCrypto        Boolean? @map("is_crypto")
+  amountUsd       Decimal  @default(0) @map("amount_usd") @db.Decimal(20, 2)
+  feeUsd          Decimal  @default(0) @map("fee_usd") @db.Decimal(20, 2)
+  kytEvent        Boolean  @default(false) @map("kyt_event")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([customerId, environmentId, source, sourceKey])
+  @@index([customerId, eventDate])
+  @@map("sync_source_records")
+}

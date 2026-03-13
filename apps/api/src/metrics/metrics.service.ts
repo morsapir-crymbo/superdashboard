@@ -17,10 +17,10 @@ interface CustomerConfig {
 
 const CUSTOMER_CONFIGS: CustomerConfig[] = [
   { id: 'digiblox', displayName: 'Digiblox' },
-  { id: 'javashk', displayName: 'Javashk' },
-  { id: 'montrex', displayName: 'Montrex' },
-  { id: 'orocalab', displayName: 'Orocalab' },
+  { id: 'coincashy', displayName: 'Coincashy' },
   { id: 'bnp', displayName: 'BNP' },
+  { id: 'orocalab', displayName: 'Orocalab' },
+  { id: 'javashk', displayName: 'Javashk' },
 ];
 
 @Injectable()

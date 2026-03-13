@@ -38,7 +38,7 @@ export class HealthController {
       },
       status: configured.length === 0 ? 'NO_CUSTOMERS_CONFIGURED' : 'OK',
       message: configured.length === 0
-        ? 'No customer databases configured. Set environment variables: DIGIBLOX_DB_HOST, JAVASHK_DB_HOST, MONTREX_DB_HOST (and corresponding _DATABASE, _USER, _PASSWORD)'
+        ? 'No customer databases configured. Set environment variables: DIGIBLOX_DB_HOST, COINCASHY_DB_HOST, BNP_DB_HOST, OROCALAB_DB_HOST, JAVASHK_DB_HOST (and corresponding _DATABASE, _USER, _PASSWORD)'
         : `${configured.length} of ${allDefined.length} customers configured`,
     };
   }
