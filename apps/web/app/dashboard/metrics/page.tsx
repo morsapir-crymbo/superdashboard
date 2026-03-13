@@ -14,7 +14,6 @@ import {
 import { cn } from '@/lib/utils';
 
 const AUTO_REFRESH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
-const VOLUME_SYNC_URL = process.env.NEXT_PUBLIC_VOLUME_SYNC_URL || 'http://localhost:3014';
 
 const TIME_PERIODS: { key: MetricType; label: string }[] = [
   { key: 'last30Days', label: '30 Days' },
@@ -38,19 +37,11 @@ export default function MetricsPage() {
 
   const triggerSync = useCallback(async (): Promise<{ success: boolean; timestamp?: Date }> => {
     try {
-      console.log('[Metrics] Triggering volume-sync service at', VOLUME_SYNC_URL);
+      console.log('[Metrics] Triggering volume-sync via superdashboard API');
       setSyncStatus('Syncing from customer databases...');
 
-      const response = await fetch(`${VOLUME_SYNC_URL}/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Sync failed: ${response.status}`);
-      }
-
-      const result = await response.json();
+      const response = await api.post('/volume/sync/trigger');
+      const result = response.data;
       console.log('[Metrics] Sync result:', result);
 
       if (result.success) {
@@ -64,7 +55,7 @@ export default function MetricsPage() {
         return { success: false };
       }
     } catch (err) {
-      console.warn('[Metrics] Sync service unavailable:', err);
+      console.warn('[Metrics] Sync trigger failed:', err);
       setSyncStatus('Sync service unavailable - using cached data');
       return { success: false };
     }

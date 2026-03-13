@@ -22,11 +22,81 @@ import {
 @UseGuards(JwtGuard)
 export class VolumeController {
   private readonly logger = new Logger(VolumeController.name);
+  private readonly volumeSyncTimeoutMs = 55_000;
 
   constructor(
     private volumeService: VolumeService,
     private volumeRepository: VolumeRepository,
   ) {}
+
+  private getVolumeSyncBaseUrl(): string {
+    return (
+      process.env.VOLUME_SYNC_URL ||
+      process.env.NEXT_PUBLIC_VOLUME_SYNC_URL ||
+      'http://127.0.0.1:3014'
+    ).replace(/\/+$/, '');
+  }
+
+  private async triggerVolumeSync() {
+    const syncToken = process.env.VOLUME_SYNC_ADMIN_TOKEN || process.env.SYNC_ADMIN_TOKEN;
+    if (!syncToken) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+          message: 'VOLUME_SYNC_ADMIN_TOKEN is not configured on the API server',
+          error: 'Internal Server Error',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.volumeSyncTimeoutMs);
+
+    try {
+      const response = await fetch(`${this.getVolumeSyncBaseUrl()}/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-sync-token': syncToken,
+        },
+        signal: controller.signal,
+      });
+
+      const rawText = await response.text();
+      const payload = rawText ? JSON.parse(rawText) : {};
+
+      if (!response.ok) {
+        throw new HttpException(
+          {
+            statusCode: response.status,
+            message: payload?.message || `Volume sync failed with status ${response.status}`,
+            error: 'Bad Gateway',
+            details: payload,
+          },
+          response.status >= 400 && response.status < 600 ? response.status : HttpStatus.BAD_GATEWAY,
+        );
+      }
+
+      return payload;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.BAD_GATEWAY,
+          message: `Failed to reach volume-sync service: ${message}`,
+          error: 'Bad Gateway',
+        },
+        HttpStatus.BAD_GATEWAY,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
 
   @Get('stats')
   async getAllStats(@Query('recalculate') recalculate?: string) {
@@ -161,6 +231,14 @@ export class VolumeController {
         );
       }
     }
+  }
+
+  @Post('sync/trigger')
+  async triggerExternalVolumeSync() {
+    this.logger.log('POST /volume/sync/trigger - Triggering volume-sync service');
+    const result = await this.triggerVolumeSync();
+    this.logger.log('POST /volume/sync/trigger - Volume-sync completed');
+    return result;
   }
 
   @Get('stats/:customerId')
