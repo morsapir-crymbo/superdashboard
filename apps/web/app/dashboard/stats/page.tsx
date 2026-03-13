@@ -156,7 +156,7 @@ export default function StatsPage() {
   const { resetInterval } = useAutoRefresh({
     intervalMs: AUTO_REFRESH_INTERVAL_MS,
     enabled: true,
-    onRefresh: () => fetchStats(false, true),
+    onRefresh: () => fetchStats(false, false),
   });
 
   const handleManualRefresh = useCallback(() => {
@@ -211,7 +211,7 @@ export default function StatsPage() {
               {lastSuccessfulSync && !syncStatus && (
                 <div className="text-right hidden sm:block">
                   <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">
-                    Last sync
+                    Last refresh
                   </p>
                   <p className="text-base font-semibold text-slate-700 tabular-nums mt-1">
                     {formatLastRefresh(lastSuccessfulSync)}
@@ -351,7 +351,7 @@ export default function StatsPage() {
             {lastSuccessfulSync && (
               <>
                 <span className="mx-2.5 text-slate-300">•</span>
-                <span>Next sync at {formatNextRefresh()}</span>
+                <span>Next refresh at {formatNextRefresh()}</span>
               </>
             )}
           </p>
