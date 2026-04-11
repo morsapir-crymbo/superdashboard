@@ -10,7 +10,8 @@
       "ADMIN_USERNAME",
       "ADMIN_PASSWORD",
       "JWT_SECRET",
-      "CORS_ORIGIN"
+      "CORS_ORIGIN",
+      "CUSTOMER_*"
     ]
   }
   

@@ -9,13 +9,17 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { VolumeService } from '../volume/volume.service';
+import { SyncService } from '../sync/sync.service';
 import { getCustomerConfigs } from '../deposit/types/customer-config';
 
 @Controller('cron')
 export class CronController {
   private readonly logger = new Logger(CronController.name);
 
-  constructor(private volumeService: VolumeService) {}
+  constructor(
+    private volumeService: VolumeService,
+    private syncService: SyncService,
+  ) {}
 
   @Get('snapshot')
   async handleCronSnapshot(
@@ -119,6 +123,39 @@ export class CronController {
         date: dateStr,
         customersProcessed: 0,
         results: { success: [], failed: ['CRITICAL_ERROR'] },
+      };
+    }
+  }
+
+  @Get('sync')
+  async handleCronSync(
+    @Headers('authorization') authHeader?: string,
+    @Headers('x-vercel-cron') vercelCronHeader?: string,
+  ) {
+    this.logger.log('=== CRON INCREMENTAL SYNC TRIGGERED ===');
+    this.logger.log(`Time: ${new Date().toISOString()}`);
+
+    const isVercelCron = vercelCronHeader === '1';
+    const hasValidSecret = process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`;
+    const isDevelopment = !process.env.VERCEL;
+
+    if (!isVercelCron && !hasValidSecret && !isDevelopment) {
+      this.logger.warn('Unauthorized cron sync access attempt');
+      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+    }
+
+    try {
+      const result = await this.syncService.runIncrementalSync();
+      this.logger.log(`=== CRON SYNC COMPLETED === ${result.summary.successful}/${result.summary.total} customers`);
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Cron sync failed: ${message}`);
+      return {
+        success: false,
+        message: `Sync failed: ${message}`,
+        timestamp: new Date().toISOString(),
+        summary: { total: 0, successful: 0, failed: 0 },
       };
     }
   }

@@ -44,7 +44,10 @@ export default function MetricsPage() {
       const result = response.data;
       console.log('[Metrics] Sync result:', result);
 
-      if (result.success) {
+      if (result.inProgress) {
+        setSyncStatus('Sync already running — loading latest data...');
+        return { success: false };
+      } else if (result.success) {
         setSyncStatus(`Synced ${result.summary.successful}/${result.summary.total} customers`);
         return { success: true, timestamp: new Date(result.timestamp) };
       } else if (result.summary?.successful > 0) {
@@ -54,9 +57,14 @@ export default function MetricsPage() {
         setSyncStatus(`Sync failed: ${result.summary?.failed || 0} errors`);
         return { success: false };
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[Metrics] Sync trigger failed:', err);
-      setSyncStatus('Sync service unavailable - using cached data');
+      const status = err?.response?.status;
+      if (status === 502 || err?.code === 'ECONNREFUSED') {
+        setSyncStatus('Sync service offline — using cached data');
+      } else {
+        setSyncStatus('Sync unavailable — using cached data');
+      }
       return { success: false };
     }
   }, []);
