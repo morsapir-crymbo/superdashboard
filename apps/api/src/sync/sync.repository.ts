@@ -88,7 +88,7 @@ export class SyncRepository {
             customer_id, environment_id, source, source_key, event_date, source_updated_at,
             status, is_included, is_crypto, amount_usd, fee_usd, kyt_event, created_at, updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+          VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
           ON CONFLICT (customer_id, environment_id, source, source_key)
           DO UPDATE SET
             event_date = EXCLUDED.event_date,
@@ -127,7 +127,7 @@ export class SyncRepository {
             trade_volume, trade_count, trade_fees,
             kyt_event_count, created_at, updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW(), NOW())
+          VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW(), NOW())
           ON CONFLICT (customer_id, date)
           DO UPDATE SET
             crypto_deposit_volume = daily_metrics.crypto_deposit_volume + EXCLUDED.crypto_deposit_volume,
@@ -165,7 +165,7 @@ export class SyncRepository {
       for (const [date, delta] of depositVolumeDeltasByDate) {
         await tx.$executeRawUnsafe(
           `INSERT INTO daily_environment_volume (customer_id, environment_id, date, volume, deposit_count, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+           VALUES ($1, $2, $3::date, $4, $5, NOW(), NOW())
            ON CONFLICT (customer_id, environment_id, date)
            DO UPDATE SET
              volume = daily_environment_volume.volume + EXCLUDED.volume,
