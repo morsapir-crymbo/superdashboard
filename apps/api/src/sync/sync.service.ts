@@ -274,8 +274,24 @@ export class SyncService {
       };
     }
 
+    const DEADLINE_MS = 50_000;
+    const deadline = Date.now() + DEADLINE_MS;
+
+    const withTimeout = (promise: Promise<any>, customerId: string) => {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        return Promise.resolve({ customerId, success: false, message: 'Skipped — deadline reached' });
+      }
+      return Promise.race([
+        promise,
+        new Promise<{ customerId: string; success: boolean; message: string }>((resolve) =>
+          setTimeout(() => resolve({ customerId, success: false, message: 'Timeout — took too long' }), remaining),
+        ),
+      ]);
+    };
+
     const settled = await Promise.allSettled(
-      configs.map((config) => this.syncCustomer(config, quotes)),
+      configs.map((config) => withTimeout(this.syncCustomer(config, quotes), config.id)),
     );
 
     for (let i = 0; i < configs.length; i++) {
