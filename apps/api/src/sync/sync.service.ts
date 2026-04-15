@@ -4,6 +4,7 @@ import { SyncRepository } from './sync.repository';
 import { getCustomerApiConfigs } from './customer-config';
 import { getJwt, fetchRecentUpdatedListAll, toFiatAmount } from './api-client';
 import {
+  CustomerApiConfig,
   SyncSource,
   SyncSourceRecordInput,
   DailyMetricsDelta,
@@ -273,70 +274,18 @@ export class SyncService {
       };
     }
 
-    for (const config of configs) {
-      const envId = config.id;
-      try {
-        this.logger.log(`Syncing ${config.id}...`);
-        const jwt = await getJwt(config);
+    const settled = await Promise.allSettled(
+      configs.map((config) => this.syncCustomer(config, quotes)),
+    );
 
-        for (const source of SOURCES) {
-          const checkpoint = await this.syncRepo.getCheckpointState(config.id, envId, source);
-          const path = pathForSource(source);
-          const cutoff = checkpoint.lastUpdatedAt
-            ? new Date(checkpoint.lastUpdatedAt.getTime() - UPDATED_AFTER_LOOKBACK_MS)
-            : new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-          const recentItems = await fetchRecentUpdatedListAll(config.baseUrl, jwt, path, cutoff);
-
-          const mergedById = new Map<string, Record<string, unknown>>();
-          for (const item of recentItems) {
-            const id = item.id != null ? String(item.id) : '';
-            if (id) mergedById.set(id, item);
-          }
-
-          if (mergedById.size === 0) continue;
-
-          const sourceKeys = [...mergedById.keys()];
-          const existingRecords = await this.syncRepo.getExistingSourceRecords(
-            config.id, envId, source, sourceKeys,
-          );
-
-          const metricDeltasByDate = new Map<string, DailyMetricsDelta>();
-          const depositVolumeDeltasByDate = new Map<string, { volume: number; depositCount: number }>();
-          const recordsToPersist: SyncSourceRecordInput[] = [];
-
-          const maxId = checkpoint.lastId ?? 0;
-          let maxUpdatedAt = checkpoint.lastUpdatedAt;
-
-          for (const item of mergedById.values()) {
-            const normalized = normalizeRecord(source, item, quotes);
-            if (!normalized) continue;
-
-            const previous = existingRecords.get(normalized.sourceKey);
-            if (previous) {
-              applyRecordContribution(source, previous, -1, metricDeltasByDate, depositVolumeDeltasByDate);
-            }
-            applyRecordContribution(source, normalized, 1, metricDeltasByDate, depositVolumeDeltasByDate);
-
-            recordsToPersist.push(normalized);
-            if (normalized.sourceUpdatedAt && (!maxUpdatedAt || normalized.sourceUpdatedAt > maxUpdatedAt)) {
-              maxUpdatedAt = normalized.sourceUpdatedAt;
-            }
-          }
-
-          await this.syncRepo.applySourceRecordChangesAndCheckpoint(
-            config.id, envId, source,
-            recordsToPersist, metricDeltasByDate, depositVolumeDeltasByDate,
-            maxId, maxUpdatedAt,
-          );
-        }
-
-        this.logger.log(`${config.id}: sync completed`);
-        results.push({ customerId: config.id, success: true, message: 'OK' });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        this.logger.error(`${config.id}: ${msg}`);
-        results.push({ customerId: config.id, success: false, message: msg });
+    for (let i = 0; i < configs.length; i++) {
+      const s = settled[i];
+      if (s.status === 'fulfilled') {
+        results.push(s.value);
+      } else {
+        const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+        this.logger.error(`${configs[i].id}: ${msg}`);
+        results.push({ customerId: configs[i].id, success: false, message: msg });
       }
     }
 
@@ -349,5 +298,75 @@ export class SyncService {
       results,
       summary: { total: results.length, successful, failed },
     };
+  }
+
+  private async syncCustomer(
+    config: CustomerApiConfig,
+    quotes: Record<string, number>,
+  ): Promise<{ customerId: string; success: boolean; message: string }> {
+    const envId = config.id;
+    try {
+      this.logger.log(`Syncing ${config.id}...`);
+      const jwt = await getJwt(config);
+
+      for (const source of SOURCES) {
+        const checkpoint = await this.syncRepo.getCheckpointState(config.id, envId, source);
+        const path = pathForSource(source);
+        const cutoff = checkpoint.lastUpdatedAt
+          ? new Date(checkpoint.lastUpdatedAt.getTime() - UPDATED_AFTER_LOOKBACK_MS)
+          : new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+        const recentItems = await fetchRecentUpdatedListAll(config.baseUrl, jwt, path, cutoff);
+
+        const mergedById = new Map<string, Record<string, unknown>>();
+        for (const item of recentItems) {
+          const id = item.id != null ? String(item.id) : '';
+          if (id) mergedById.set(id, item);
+        }
+
+        if (mergedById.size === 0) continue;
+
+        const sourceKeys = [...mergedById.keys()];
+        const existingRecords = await this.syncRepo.getExistingSourceRecords(
+          config.id, envId, source, sourceKeys,
+        );
+
+        const metricDeltasByDate = new Map<string, DailyMetricsDelta>();
+        const depositVolumeDeltasByDate = new Map<string, { volume: number; depositCount: number }>();
+        const recordsToPersist: SyncSourceRecordInput[] = [];
+
+        const maxId = checkpoint.lastId ?? 0;
+        let maxUpdatedAt = checkpoint.lastUpdatedAt;
+
+        for (const item of mergedById.values()) {
+          const normalized = normalizeRecord(source, item, quotes);
+          if (!normalized) continue;
+
+          const previous = existingRecords.get(normalized.sourceKey);
+          if (previous) {
+            applyRecordContribution(source, previous, -1, metricDeltasByDate, depositVolumeDeltasByDate);
+          }
+          applyRecordContribution(source, normalized, 1, metricDeltasByDate, depositVolumeDeltasByDate);
+
+          recordsToPersist.push(normalized);
+          if (normalized.sourceUpdatedAt && (!maxUpdatedAt || normalized.sourceUpdatedAt > maxUpdatedAt)) {
+            maxUpdatedAt = normalized.sourceUpdatedAt;
+          }
+        }
+
+        await this.syncRepo.applySourceRecordChangesAndCheckpoint(
+          config.id, envId, source,
+          recordsToPersist, metricDeltasByDate, depositVolumeDeltasByDate,
+          maxId, maxUpdatedAt,
+        );
+      }
+
+      this.logger.log(`${config.id}: sync completed`);
+      return { customerId: config.id, success: true, message: 'OK' };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.error(`${config.id}: ${msg}`);
+      return { customerId: config.id, success: false, message: msg };
+    }
   }
 }
