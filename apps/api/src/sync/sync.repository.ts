@@ -10,6 +10,11 @@ import {
 @Injectable()
 export class SyncRepository {
   private readonly logger = new Logger(SyncRepository.name);
+  /**
+   * Interactive `$transaction` calls must not overlap across parallel customer syncs:
+   * serverless DB pools + Prisma can drop or invalidate a transaction id (digiblox-style errors).
+   */
+  private writeTail: Promise<void> = Promise.resolve();
 
   constructor(private prisma: PrismaService) {}
 
@@ -72,6 +77,38 @@ export class SyncRepository {
   }
 
   async applySourceRecordChangesAndCheckpoint(
+    customerId: string,
+    environmentId: string,
+    source: SyncSource,
+    records: SyncSourceRecordInput[],
+    metricDeltasByDate: Map<string, DailyMetricsDelta>,
+    depositVolumeDeltasByDate: Map<string, { volume: number; depositCount: number }>,
+    maxId: number,
+    lastUpdatedAt: Date | null,
+  ): Promise<void> {
+    const prev = this.writeTail;
+    let releaseNext!: () => void;
+    this.writeTail = new Promise<void>((resolve) => {
+      releaseNext = resolve;
+    });
+    await prev;
+    try {
+      await this.applySourceRecordChangesAndCheckpointTx(
+        customerId,
+        environmentId,
+        source,
+        records,
+        metricDeltasByDate,
+        depositVolumeDeltasByDate,
+        maxId,
+        lastUpdatedAt,
+      );
+    } finally {
+      releaseNext();
+    }
+  }
+
+  private async applySourceRecordChangesAndCheckpointTx(
     customerId: string,
     environmentId: string,
     source: SyncSource,
@@ -193,6 +230,6 @@ export class SyncRepository {
         maxId,
         lastUpdatedAt ?? new Date(),
       );
-    }, { timeout: 55_000 });
+    }, { maxWait: 15_000, timeout: 90_000 });
   }
 }
