@@ -248,6 +248,8 @@ export class SyncService {
   private async executeSync(): Promise<SyncResult> {
     const configs = getCustomerApiConfigs();
     const results: Array<{ customerId: string; success: boolean; message: string }> = [];
+    /** Wall time since executeSync started (quotes + parallel sync must fit Vercel maxDuration). */
+    const executeSyncStartedAt = Date.now();
 
     if (configs.length === 0) {
       this.logger.warn('No customer API configs found (set CUSTOMER_*_API_* env vars)');
@@ -274,8 +276,16 @@ export class SyncService {
       };
     }
 
-    const DEADLINE_MS = 50_000;
-    const deadline = Date.now() + DEADLINE_MS;
+    // Align with apps/api/vercel.json "maxDuration" (default 60s): use leftover time after quotes
+    // instead of a flat 50s cap, so one slow customer (large API pagination) can finish.
+    const maxDurationMs = Number(process.env.SYNC_MAX_DURATION_MS) || 60_000;
+    const responseReserveMs = Number(process.env.SYNC_RESPONSE_RESERVE_MS) || 2_500;
+    const elapsedBeforeParallel = Date.now() - executeSyncStartedAt;
+    const customerPhaseMs = Math.max(
+      8_000,
+      maxDurationMs - elapsedBeforeParallel - responseReserveMs,
+    );
+    const deadline = Date.now() + customerPhaseMs;
 
     const withTimeout = (promise: Promise<any>, customerId: string) => {
       const remaining = deadline - Date.now();

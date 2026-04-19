@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { RefreshCw, Activity, Loader2, BarChart3 } from 'lucide-react';
 import api from '@/lib/api';
+import { volumeSyncTriggerStatus } from '@/lib/volume-sync-trigger-status';
 import { Button } from '@/components/ui/button';
 import { TotalVolumeSummary } from '@/components/dashboard/TotalVolumeSummary';
 import { ExtendedMetricsSection } from '@/components/dashboard/ExtendedMetricsSection';
@@ -47,19 +48,12 @@ export default function StatsPage() {
       const result = response.data;
       console.log('[Stats] Sync result:', result);
 
-      if (result.inProgress) {
-        setSyncStatus('Sync already running — loading latest data...');
-        return { success: false };
-      } else if (result.success) {
-        setSyncStatus(`Synced ${result.summary.successful}/${result.summary.total} customers`);
+      const { status, refreshSuccess } = volumeSyncTriggerStatus(result);
+      setSyncStatus(status);
+      if (refreshSuccess && result.timestamp) {
         return { success: true, timestamp: new Date(result.timestamp) };
-      } else if (result.summary?.successful > 0) {
-        setSyncStatus(`Partial sync: ${result.summary.successful}/${result.summary.total} customers`);
-        return { success: true, timestamp: new Date(result.timestamp) };
-      } else {
-        setSyncStatus(`Sync failed: ${result.summary?.failed || 0} errors`);
-        return { success: false };
       }
+      return { success: false };
     } catch (err: any) {
       console.warn('[Stats] Volume-sync trigger failed:', err);
       const status = err?.response?.status;
