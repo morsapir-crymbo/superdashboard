@@ -4,11 +4,13 @@ import {
   Post,
   Param,
   Query,
+  Req,
   UseGuards,
   Logger,
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { VolumeService } from './volume.service';
 import { VolumeRepository } from './volume.repository';
 import { SyncService } from '../sync/sync.service';
@@ -166,10 +168,12 @@ export class VolumeController {
   }
 
   @Post('sync/trigger')
-  async triggerExternalVolumeSync() {
+  async triggerExternalVolumeSync(@Req() req: Request) {
     this.logger.log('POST /volume/sync/trigger - Running incremental sync');
     try {
-      const result = await this.syncService.runIncrementalSync();
+      const handlerEntryMs = (req as Request & { superdashboardHandlerEntryMs?: number })
+        .superdashboardHandlerEntryMs;
+      const result = await this.syncService.runIncrementalSync(handlerEntryMs);
       this.logger.log(`POST /volume/sync/trigger - Sync completed: ${result.summary.successful}/${result.summary.total}`);
       return result;
     } catch (error) {

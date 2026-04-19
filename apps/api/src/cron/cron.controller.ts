@@ -3,11 +3,13 @@ import {
   Get,
   Post,
   Query,
+  Req,
   Headers,
   Logger,
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { VolumeService } from '../volume/volume.service';
 import { SyncService } from '../sync/sync.service';
 import { getCustomerConfigs } from '../deposit/types/customer-config';
@@ -129,6 +131,7 @@ export class CronController {
 
   @Get('sync')
   async handleCronSync(
+    @Req() req: Request,
     @Headers('authorization') authHeader?: string,
     @Headers('x-vercel-cron') vercelCronHeader?: string,
   ) {
@@ -145,7 +148,9 @@ export class CronController {
     }
 
     try {
-      const result = await this.syncService.runIncrementalSync();
+      const handlerEntryMs = (req as Request & { superdashboardHandlerEntryMs?: number })
+        .superdashboardHandlerEntryMs;
+      const result = await this.syncService.runIncrementalSync(handlerEntryMs);
       this.logger.log(`=== CRON SYNC COMPLETED === ${result.summary.successful}/${result.summary.total} customers`);
       return result;
     } catch (error) {

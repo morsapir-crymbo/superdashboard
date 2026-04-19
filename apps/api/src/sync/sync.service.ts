@@ -227,7 +227,12 @@ export class SyncService {
     private syncRepo: SyncRepository,
   ) {}
 
-  async runIncrementalSync(): Promise<SyncResult> {
+  /**
+   * @param handlerEntryMs When set (Vercel adapter stamps `req.superdashboardHandlerEntryMs`),
+   *   customer-phase timeout uses remaining wall time until platform maxDuration so cold start
+   *   + quotes do not overrun the invocation budget (avoids 504).
+   */
+  async runIncrementalSync(handlerEntryMs?: number): Promise<SyncResult> {
     if (this.running) {
       return {
         success: false,
@@ -239,13 +244,13 @@ export class SyncService {
 
     this.running = true;
     try {
-      return await this.executeSync();
+      return await this.executeSync(handlerEntryMs);
     } finally {
       this.running = false;
     }
   }
 
-  private async executeSync(): Promise<SyncResult> {
+  private async executeSync(handlerEntryMs?: number): Promise<SyncResult> {
     const configs = getCustomerApiConfigs();
     const results: Array<{ customerId: string; success: boolean; message: string }> = [];
     /** Wall time since executeSync started (quotes + parallel sync must fit Vercel maxDuration). */
@@ -276,15 +281,29 @@ export class SyncService {
       };
     }
 
-    // Align with apps/api/vercel.json "maxDuration" (default 60s): use leftover time after quotes
-    // instead of a flat 50s cap, so one slow customer (large API pagination) can finish.
-    const maxDurationMs = Number(process.env.SYNC_MAX_DURATION_MS) || 60_000;
+    // Match apps/api/vercel.json maxDuration (set SYNC_MAX_DURATION_MS in Vercel if you override it).
+    const fromEnv = Number(process.env.SYNC_MAX_DURATION_MS);
+    const maxDurationMs =
+      Number.isFinite(fromEnv) && fromEnv > 0
+        ? fromEnv
+        : process.env.VERCEL
+          ? 115_000
+          : 58_000;
     const responseReserveMs = Number(process.env.SYNC_RESPONSE_RESERVE_MS) || 2_500;
-    const elapsedBeforeParallel = Date.now() - executeSyncStartedAt;
-    const customerPhaseMs = Math.max(
-      8_000,
-      maxDurationMs - elapsedBeforeParallel - responseReserveMs,
-    );
+    let customerPhaseMs: number;
+    if (handlerEntryMs != null) {
+      const elapsedSinceHandler = Date.now() - handlerEntryMs;
+      customerPhaseMs = Math.max(
+        8_000,
+        maxDurationMs - elapsedSinceHandler - responseReserveMs,
+      );
+    } else {
+      const elapsedBeforeParallel = Date.now() - executeSyncStartedAt;
+      customerPhaseMs = Math.max(
+        8_000,
+        maxDurationMs - elapsedBeforeParallel - responseReserveMs,
+      );
+    }
     const deadline = Date.now() + customerPhaseMs;
 
     const withTimeout = (promise: Promise<any>, customerId: string) => {

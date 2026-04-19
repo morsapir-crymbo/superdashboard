@@ -22,6 +22,7 @@ function setCors(res: VercelResponse, origin: string, allow: string[]) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const handlerEntryMs = Date.now();
   const origin = (req.headers.origin as string) || '';
   const allow = parseAllowedOrigins();
 
@@ -32,6 +33,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (!server) server = await createNestServer();
+
+  (req as VercelRequest & { superdashboardHandlerEntryMs?: number }).superdashboardHandlerEntryMs =
+    handlerEntryMs;
 
   setCors(res, origin, allow);
   return server(req, res);
