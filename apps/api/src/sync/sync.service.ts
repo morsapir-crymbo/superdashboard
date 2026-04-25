@@ -110,10 +110,17 @@ function statusOf(item: Record<string, unknown>): string {
   return (item.status ?? '').toString().toUpperCase();
 }
 
+const INCLUDED_DEPOSIT_STATUSES = new Set([
+  'CONFIRMED',
+  'COMPLETED',
+  'DONE',
+  'ADMIN_APPROVED',
+]);
+
 function shouldIncludeItem(source: SyncSource, item: Record<string, unknown>): boolean {
   switch (source) {
     case 'deposits':
-      return ['CONFIRMED', 'COMPLETED'].includes(statusOf(item))
+      return INCLUDED_DEPOSIT_STATUSES.has(statusOf(item))
         && String(item.to_address ?? '') !== 'INTERNAL_TRANSFER';
     case 'transfers':
       return ['CONFIRMED', 'ADMIN_APPROVED'].includes(statusOf(item))

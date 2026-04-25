@@ -5,16 +5,23 @@ export interface BuiltQuery {
   params: (string | number)[];
 }
 
+const INCLUDED_DEPOSIT_STATUSES = [
+  'CONFIRMED',
+  'COMPLETED',
+  'DONE',
+  'ADMIN_APPROVED',
+] as const;
+
 /**
  * BASE FILTERS applied to ALL deposit queries:
  * 1. to_address <> 'INTERNAL_TRANSFER' - Exclude internal transfers
- * 2. status IN ('CONFIRMED', 'COMPLETED') - Only count confirmed/completed deposits
- * 
+ * 2. status IN included terminal statuses - Count finalized deposits
+ *
  * These are combined with customer-specific filters from config.
  */
 const BASE_FILTERS: CustomerQueryFilter[] = [
   { column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' },
-  { column: 'd.status', operator: 'IN', value: ['CONFIRMED', 'COMPLETED'] },
+  { column: 'd.status', operator: 'IN', value: [...INCLUDED_DEPOSIT_STATUSES] },
 ];
 
 export class DepositQueryBuilder {
