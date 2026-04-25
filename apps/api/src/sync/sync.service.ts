@@ -35,20 +35,19 @@ function dateStr(d: Date): string {
  */
 function eventDateYmd(d: Date): string {
   const tz =
-    process.env.VOLUME_STATS_TIMEZONE?.trim() || process.env.SYNC_EVENT_DATE_TIMEZONE?.trim();
-  if (tz) {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(d);
-    const y = parts.find((p) => p.type === 'year')!.value;
-    const m = parts.find((p) => p.type === 'month')!.value;
-    const day = parts.find((p) => p.type === 'day')!.value;
-    return `${y}-${m}-${day}`;
-  }
-  return dateStr(d);
+    process.env.VOLUME_STATS_TIMEZONE?.trim()
+    || process.env.SYNC_EVENT_DATE_TIMEZONE?.trim()
+    || 'Asia/Jerusalem';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const y = parts.find((p) => p.type === 'year')!.value;
+  const m = parts.find((p) => p.type === 'month')!.value;
+  const day = parts.find((p) => p.type === 'day')!.value;
+  return `${y}-${m}-${day}`;
 }
 
 function emptyDelta(): DailyMetricsDelta {

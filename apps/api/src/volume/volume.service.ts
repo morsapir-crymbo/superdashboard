@@ -68,7 +68,7 @@ export class VolumeService {
 
   private volumeStatsTimeZone(): string | undefined {
     const tz = process.env.VOLUME_STATS_TIMEZONE?.trim();
-    return tz || undefined;
+    return tz || 'Asia/Jerusalem';
   }
 
   /** Calendar YYYY-MM-DD in UTC (matches Postgres `date` stored at UTC midnight). */
