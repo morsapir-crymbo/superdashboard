@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Pool } from 'pg';
 import { PrismaService } from '../prisma.service';
 import {
   SyncSource,
@@ -7,16 +8,79 @@ import {
   DailyMetricsDelta,
 } from './types';
 
+/** Rows per INSERT in one statement (fewer statements in the enclosing `$transaction`). */
+const SOURCE_RECORD_UPSERT_BATCH = 250;
+
+/** Wall-clock cap for each statement inside the native `pg` sync transaction. */
+function syncStatementTimeoutMs(): number {
+  const raw = Number(process.env.SYNC_PRISMA_TRANSACTION_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 120_000;
+}
+
+function syncPostgresConnectionString(): string {
+  const s =
+    process.env.SYNC_POSTGRES_URL?.trim()
+    || process.env.DIRECT_DATABASE_URL?.trim()
+    || process.env.DATABASE_URL?.trim();
+  if (!s) {
+    throw new Error(
+      'Set DATABASE_URL, or DIRECT_DATABASE_URL / SYNC_POSTGRES_URL for sync writes (session-capable Postgres URL).',
+    );
+  }
+  return s;
+}
+
+type SqlOp = { text: string; values: unknown[] };
+
 @Injectable()
-export class SyncRepository {
+export class SyncRepository implements OnModuleDestroy {
   private readonly logger = new Logger(SyncRepository.name);
-  /**
-   * Interactive `$transaction` calls must not overlap across parallel customer syncs:
-   * serverless DB pools + Prisma can drop or invalidate a transaction id (digiblox-style errors).
-   */
+  /** Serialize sync writes so concurrent customers never overload the pool in one burst. */
   private writeTail: Promise<void> = Promise.resolve();
+  private pgPool: Pool | null = null;
 
   constructor(private prisma: PrismaService) {}
+
+  async onModuleDestroy(): Promise<void> {
+    if (this.pgPool) {
+      await this.pgPool.end();
+      this.pgPool = null;
+    }
+  }
+
+  private syncPgPool(): Pool {
+    if (!this.pgPool) {
+      this.pgPool = new Pool({
+        connectionString: syncPostgresConnectionString(),
+        max: 1,
+        idleTimeoutMillis: 20_000,
+        connectionTimeoutMillis: 25_000,
+      });
+    }
+    return this.pgPool;
+  }
+
+  /** Real BEGIN/COMMIT on one `pg` connection — avoids Prisma “Transaction not found” with poolers. */
+  private async runPgTransaction(ops: SqlOp[]): Promise<void> {
+    const pool = this.syncPgPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const op of ops) {
+        await client.query(op.text, op.values);
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // ignore
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
 
   async getCheckpointState(
     customerId: string,
@@ -118,25 +182,27 @@ export class SyncRepository {
     maxId: number,
     lastUpdatedAt: Date | null,
   ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      for (const record of records) {
-        await tx.$executeRawUnsafe(
-          `INSERT INTO sync_source_records (
-            customer_id, environment_id, source, source_key, event_date, source_updated_at,
-            status, is_included, is_crypto, amount_usd, fee_usd, kyt_event, created_at, updated_at
-          )
-          VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
-          ON CONFLICT (customer_id, environment_id, source, source_key)
-          DO UPDATE SET
-            event_date = EXCLUDED.event_date,
-            source_updated_at = EXCLUDED.source_updated_at,
-            status = EXCLUDED.status,
-            is_included = EXCLUDED.is_included,
-            is_crypto = EXCLUDED.is_crypto,
-            amount_usd = EXCLUDED.amount_usd,
-            fee_usd = EXCLUDED.fee_usd,
-            kyt_event = EXCLUDED.kyt_event,
-            updated_at = NOW()`,
+    const timeoutMs = Math.min(
+      Math.max(syncStatementTimeoutMs(), 5_000),
+      3_600_000,
+    );
+    const ops: SqlOp[] = [
+      {
+        text: `SELECT set_config('statement_timeout', $1, true)`,
+        values: [`${timeoutMs}ms`],
+      },
+    ];
+
+    for (let i = 0; i < records.length; i += SOURCE_RECORD_UPSERT_BATCH) {
+      const slice = records.slice(i, i + SOURCE_RECORD_UPSERT_BATCH);
+      const placeholders: string[] = [];
+      const params: unknown[] = [];
+      let p = 1;
+      for (const record of slice) {
+        placeholders.push(
+          `($${p}, $${p + 1}, $${p + 2}, $${p + 3}, $${p + 4}::date, $${p + 5}, $${p + 6}, $${p + 7}, $${p + 8}, $${p + 9}, $${p + 10}, $${p + 11}, NOW(), NOW())`,
+        );
+        params.push(
           customerId,
           environmentId,
           source,
@@ -150,11 +216,32 @@ export class SyncRepository {
           record.feeUsd,
           record.kytEvent,
         );
+        p += 12;
       }
+      ops.push({
+        text: `INSERT INTO sync_source_records (
+            customer_id, environment_id, source, source_key, event_date, source_updated_at,
+            status, is_included, is_crypto, amount_usd, fee_usd, kyt_event, created_at, updated_at
+          )
+          VALUES ${placeholders.join(',\n')}
+          ON CONFLICT (customer_id, environment_id, source, source_key)
+          DO UPDATE SET
+            event_date = EXCLUDED.event_date,
+            source_updated_at = EXCLUDED.source_updated_at,
+            status = EXCLUDED.status,
+            is_included = EXCLUDED.is_included,
+            is_crypto = EXCLUDED.is_crypto,
+            amount_usd = EXCLUDED.amount_usd,
+            fee_usd = EXCLUDED.fee_usd,
+            kyt_event = EXCLUDED.kyt_event,
+            updated_at = NOW()`,
+        values: params,
+      });
+    }
 
-      for (const [date, delta] of metricDeltasByDate) {
-        await tx.$executeRawUnsafe(
-          `INSERT INTO daily_metrics (
+    for (const [date, delta] of metricDeltasByDate) {
+      ops.push({
+        text: `INSERT INTO daily_metrics (
             customer_id, date,
             crypto_deposit_volume, crypto_deposit_count, crypto_deposit_fees,
             fiat_deposit_volume, fiat_deposit_count, fiat_deposit_fees,
@@ -187,6 +274,7 @@ export class SyncRepository {
             trade_fees = daily_metrics.trade_fees + EXCLUDED.trade_fees,
             kyt_event_count = daily_metrics.kyt_event_count + EXCLUDED.kyt_event_count,
             updated_at = NOW()`,
+        values: [
           customerId,
           date,
           delta.cryptoDepositVolume, delta.cryptoDepositCount, delta.cryptoDepositFees,
@@ -196,40 +284,34 @@ export class SyncRepository {
           delta.transferVolume, delta.transferCount, delta.transferFees,
           delta.tradeVolume, delta.tradeCount, delta.tradeFees,
           delta.kytEventCount,
-        );
-      }
+        ],
+      });
+    }
 
-      for (const [date, delta] of depositVolumeDeltasByDate) {
-        await tx.$executeRawUnsafe(
-          `INSERT INTO daily_environment_volume (customer_id, environment_id, date, volume, deposit_count, created_at, updated_at)
+    for (const [date, delta] of depositVolumeDeltasByDate) {
+      ops.push({
+        text: `INSERT INTO daily_environment_volume (customer_id, environment_id, date, volume, deposit_count, created_at, updated_at)
            VALUES ($1, $2, $3::date, $4, $5, NOW(), NOW())
            ON CONFLICT (customer_id, environment_id, date)
            DO UPDATE SET
              volume = daily_environment_volume.volume + EXCLUDED.volume,
              deposit_count = daily_environment_volume.deposit_count + EXCLUDED.deposit_count,
              updated_at = NOW()`,
-          customerId,
-          environmentId,
-          date,
-          delta.volume,
-          delta.depositCount,
-        );
-      }
+        values: [customerId, environmentId, date, delta.volume, delta.depositCount],
+      });
+    }
 
-      await tx.$executeRawUnsafe(
-        `INSERT INTO sync_checkpoints (customer_id, environment_id, source, last_id, last_updated_at, updated_at)
+    ops.push({
+      text: `INSERT INTO sync_checkpoints (customer_id, environment_id, source, last_id, last_updated_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, NOW())
          ON CONFLICT (customer_id, environment_id, source)
          DO UPDATE SET
            last_id = GREATEST(sync_checkpoints.last_id, EXCLUDED.last_id),
            last_updated_at = GREATEST(COALESCE(sync_checkpoints.last_updated_at, EXCLUDED.last_updated_at), EXCLUDED.last_updated_at),
            updated_at = NOW()`,
-        customerId,
-        environmentId,
-        source,
-        maxId,
-        lastUpdatedAt ?? new Date(),
-      );
-    }, { maxWait: 15_000, timeout: 90_000 });
+      values: [customerId, environmentId, source, maxId, lastUpdatedAt ?? new Date()],
+    });
+
+    await this.runPgTransaction(ops);
   }
 }
