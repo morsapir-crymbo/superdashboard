@@ -29,6 +29,28 @@ function dateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * Calendar YYYY-MM-DD for `eventDate` / metric buckets. Prefer `VOLUME_STATS_TIMEZONE` (same as
+ * volume stats) or `SYNC_EVENT_DATE_TIMEZONE` so Vercel UTC does not mis-bucket vs dashboard "today".
+ */
+function eventDateYmd(d: Date): string {
+  const tz =
+    process.env.VOLUME_STATS_TIMEZONE?.trim() || process.env.SYNC_EVENT_DATE_TIMEZONE?.trim();
+  if (tz) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(d);
+    const y = parts.find((p) => p.type === 'year')!.value;
+    const m = parts.find((p) => p.type === 'month')!.value;
+    const day = parts.find((p) => p.type === 'day')!.value;
+    return `${y}-${m}-${day}`;
+  }
+  return dateStr(d);
+}
+
 function emptyDelta(): DailyMetricsDelta {
   return {
     cryptoDepositVolume: 0, cryptoDepositCount: 0, cryptoDepositFees: 0,
@@ -156,7 +178,7 @@ function normalizeRecord(
 
   const sourceUpdatedAtRaw = item.updated_at ?? item.updatedAt ?? item.created_at ?? item.createdAt;
   const sourceUpdatedAt = sourceUpdatedAtRaw ? new Date(sourceUpdatedAtRaw as string) : null;
-  const eventDate = dateStr(effectiveEventDate(item));
+  const eventDate = eventDateYmd(effectiveEventDate(item));
   const isIncluded = shouldIncludeItem(source, item);
   const isCryptoValue = isCrypto(item);
 
