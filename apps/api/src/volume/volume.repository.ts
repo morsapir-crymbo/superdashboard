@@ -189,6 +189,20 @@ export class VolumeRepository {
     });
   }
 
+  /** Snapshot row for the given UTC calendar day (`YYYY-MM-DD`), if present. */
+  async findSnapshotByCustomerAndUtcYmd(
+    customerId: string,
+    ymd: string,
+  ): Promise<DailyVolumeRecord | null> {
+    const dateOnly = new Date(`${ymd}T00:00:00.000Z`);
+    return this.prisma.dailyEnvironmentVolume.findFirst({
+      where: {
+        customerId,
+        date: dateOnly,
+      },
+    });
+  }
+
   async sumMetricsForDateRange(
     customerId: string,
     startDate: Date,

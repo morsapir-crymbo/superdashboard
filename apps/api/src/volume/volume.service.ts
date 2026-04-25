@@ -38,6 +38,8 @@ export interface CustomerVolumeDetail {
   }[];
   /** Most recently updated snapshot row for this customer (null if none). */
   lastCalculatedDailyVolume?: LastCalculatedDailyVolumeRow | null;
+  /** Snapshot row for `statsTodayDate` specifically (may differ from lastCalculated when sync updates older event days). */
+  dailyVolumeForStatsToday?: LastCalculatedDailyVolumeRow | null;
   /** Which calendar day is treated as "today" for snapshot stats. */
   statsTodayDate?: string;
   /** IANA zone when `VOLUME_STATS_TIMEZONE` is set; otherwise server UTC calendar. */
@@ -236,6 +238,15 @@ export class VolumeService {
       latestById.set(id, row ? this.toLastCalculatedRow(row) : null);
     });
 
+    const todayRows = await Promise.all(
+      customerIds.map((id) => this.repository.findSnapshotByCustomerAndUtcYmd(id, todayStr)),
+    );
+    const todayRowById = new Map<string, LastCalculatedDailyVolumeRow | null>();
+    customerIds.forEach((id, i) => {
+      const row = todayRows[i];
+      todayRowById.set(id, row ? this.toLastCalculatedRow(row) : null);
+    });
+
     const results: CustomerVolumeDetail[] = [];
 
     for (const customerId of customerIds) {
@@ -323,6 +334,7 @@ export class VolumeService {
           },
         ],
         lastCalculatedDailyVolume: latestById.get(customerId) ?? null,
+        dailyVolumeForStatsToday: todayRowById.get(customerId) ?? null,
         statsTodayDate: todayStr,
         statsTimeZone: tz ?? null,
       });
@@ -364,6 +376,7 @@ export class VolumeService {
         },
         environments: [],
         lastCalculatedDailyVolume: null,
+        dailyVolumeForStatsToday: null,
         statsTodayDate: this.calendarYmdNow(this.volumeStatsTimeZone()),
         statsTimeZone: this.volumeStatsTimeZone() ?? null,
       };
@@ -433,7 +446,10 @@ export class VolumeService {
       this.logger.debug(`[Stats] Skipping upsert for ${customerId} - no real-time data returned`);
     }
 
-    const latest = await this.repository.findLatestSnapshotByCustomer(customerId);
+    const [latest, todaySnapshot] = await Promise.all([
+      this.repository.findLatestSnapshotByCustomer(customerId),
+      this.repository.findSnapshotByCustomerAndUtcYmd(customerId, todayStr),
+    ]);
 
     return {
       customerId,
@@ -454,6 +470,7 @@ export class VolumeService {
         },
       ],
       lastCalculatedDailyVolume: latest ? this.toLastCalculatedRow(latest) : null,
+      dailyVolumeForStatsToday: todaySnapshot ? this.toLastCalculatedRow(todaySnapshot) : null,
       statsTodayDate: todayStr,
       statsTimeZone: tz ?? null,
     };
