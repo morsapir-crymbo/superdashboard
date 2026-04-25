@@ -181,6 +181,14 @@ export class VolumeRepository {
     ));
   }
 
+  /** Latest snapshot row for this customer (by `updatedAt`) — proves when volume was last written. */
+  async findLatestSnapshotByCustomer(customerId: string): Promise<DailyVolumeRecord | null> {
+    return this.prisma.dailyEnvironmentVolume.findFirst({
+      where: { customerId },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
   async sumMetricsForDateRange(
     customerId: string,
     startDate: Date,
