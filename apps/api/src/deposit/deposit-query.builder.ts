@@ -10,6 +10,11 @@ const INCLUDED_DEPOSIT_STATUSES = [
   'COMPLETED',
   'DONE',
   'ADMIN_APPROVED',
+  'APPROVED',
+  'SUCCESS',
+  'SUCCEEDED',
+  'PROCESSED',
+  'SETTLED',
 ] as const;
 
 /**

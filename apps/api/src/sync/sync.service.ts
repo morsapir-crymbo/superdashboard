@@ -143,6 +143,11 @@ const INCLUDED_DEPOSIT_STATUSES = new Set([
   'COMPLETED',
   'DONE',
   'ADMIN_APPROVED',
+  'APPROVED',
+  'SUCCESS',
+  'SUCCEEDED',
+  'PROCESSED',
+  'SETTLED',
 ]);
 
 function shouldIncludeItem(source: SyncSource, item: Record<string, unknown>): boolean {
