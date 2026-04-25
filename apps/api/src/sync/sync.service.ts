@@ -13,7 +13,14 @@ import {
 
 const SOURCES: SyncSource[] = ['deposits', 'transfers', 'withdrawals', 'trades'];
 const UPDATED_AFTER_LOOKBACK_MS = 5 * 60 * 1000;
-const SOURCE_PROCESS_BATCH = Number(process.env.SYNC_SOURCE_PROCESS_BATCH ?? 500);
+
+function sourceProcessBatchSize(): number {
+  const raw = Number(process.env.SYNC_SOURCE_PROCESS_BATCH);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return 500;
+  }
+  return Math.floor(raw);
+}
 
 function dateStr(d: Date): string {
   const y = d.getFullYear();
@@ -253,6 +260,15 @@ export class SyncService {
     this.running = true;
     try {
       return await this.executeSync(handlerEntryMs);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      this.logger.error(`runIncrementalSync failed: ${message}`);
+      return {
+        success: false,
+        timestamp: new Date().toISOString(),
+        results: [],
+        summary: { total: 0, successful: 0, failed: 0 },
+      };
     } finally {
       this.running = false;
     }
@@ -371,8 +387,9 @@ export class SyncService {
         let maxId = checkpoint.lastId ?? 0;
         let maxUpdatedAt = checkpoint.lastUpdatedAt;
         const sourceItems = [...mergedById.values()];
-        for (let i = 0; i < sourceItems.length; i += SOURCE_PROCESS_BATCH) {
-          const itemBatch = sourceItems.slice(i, i + SOURCE_PROCESS_BATCH);
+        const batchSize = sourceProcessBatchSize();
+        for (let i = 0; i < sourceItems.length; i += batchSize) {
+          const itemBatch = sourceItems.slice(i, i + batchSize);
           const sourceKeys = itemBatch
             .map((item) => (item.id != null ? String(item.id) : ''))
             .filter((id) => id.length > 0);
