@@ -149,12 +149,20 @@ const INCLUDED_DEPOSIT_STATUSES = new Set([
   'PROCESSED',
   'SETTLED',
 ]);
+const CUSTOMERS_INCLUDE_INTERNAL_DEPOSITS = new Set(['digiblox']);
 
-function shouldIncludeItem(source: SyncSource, item: Record<string, unknown>): boolean {
+function shouldIncludeItem(
+  source: SyncSource,
+  item: Record<string, unknown>,
+  customerId?: string,
+): boolean {
   switch (source) {
     case 'deposits':
       return INCLUDED_DEPOSIT_STATUSES.has(statusOf(item))
-        && String(item.to_address ?? '') !== 'INTERNAL_TRANSFER';
+        && (
+          CUSTOMERS_INCLUDE_INTERNAL_DEPOSITS.has(customerId ?? '')
+          || String(item.to_address ?? '') !== 'INTERNAL_TRANSFER'
+        );
     case 'transfers':
       return ['CONFIRMED', 'ADMIN_APPROVED'].includes(statusOf(item))
         && String(item.recipient_address ?? '') !== 'INTERNAL_TRANSFER';
@@ -173,6 +181,7 @@ function effectiveEventDate(item: Record<string, unknown>): Date {
 }
 
 function normalizeRecord(
+  customerId: string,
   source: SyncSource,
   item: Record<string, unknown>,
   quotes: Record<string, number>,
@@ -183,7 +192,7 @@ function normalizeRecord(
   const sourceUpdatedAtRaw = item.updated_at ?? item.updatedAt ?? item.created_at ?? item.createdAt;
   const sourceUpdatedAt = sourceUpdatedAtRaw ? new Date(sourceUpdatedAtRaw as string) : null;
   const eventDate = eventDateYmd(effectiveEventDate(item));
-  const isIncluded = shouldIncludeItem(source, item);
+  const isIncluded = shouldIncludeItem(source, item, customerId);
   const isCryptoValue = isCrypto(item);
 
   return {
@@ -429,7 +438,7 @@ export class SyncService {
           const recordsToPersist: SyncSourceRecordInput[] = [];
 
           for (const item of itemBatch) {
-            const normalized = normalizeRecord(source, item, quotes);
+          const normalized = normalizeRecord(config.id, source, item, quotes);
             if (!normalized) continue;
 
             const previous = existingRecords.get(normalized.sourceKey);

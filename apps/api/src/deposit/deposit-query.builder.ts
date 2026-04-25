@@ -24,10 +24,7 @@ const INCLUDED_DEPOSIT_STATUSES = [
  *
  * These are combined with customer-specific filters from config.
  */
-const BASE_FILTERS: CustomerQueryFilter[] = [
-  { column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' },
-  { column: 'd.status', operator: 'IN', value: [...INCLUDED_DEPOSIT_STATUSES] },
-];
+const CUSTOMERS_INCLUDE_INTERNAL_DEPOSITS = new Set(['digiblox']);
 
 export class DepositQueryBuilder {
   private config: CustomerVolumeConfig;
@@ -85,8 +82,15 @@ export class DepositQueryBuilder {
   }
 
   private buildFilterClauses(params: (string | number)[]): string {
+    const baseFilters: CustomerQueryFilter[] = [
+      { column: 'd.status', operator: 'IN', value: [...INCLUDED_DEPOSIT_STATUSES] },
+    ];
+    if (!CUSTOMERS_INCLUDE_INTERNAL_DEPOSITS.has(this.config.id)) {
+      baseFilters.unshift({ column: 'd.to_address', operator: '<>', value: 'INTERNAL_TRANSFER' });
+    }
+
     // Combine base filters with customer-specific filters
-    const allFilters = [...BASE_FILTERS, ...this.config.filters];
+    const allFilters = [...baseFilters, ...this.config.filters];
     
     if (allFilters.length === 0) {
       return '';
